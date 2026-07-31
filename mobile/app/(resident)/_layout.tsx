@@ -1,15 +1,64 @@
-import { Stack } from 'expo-router';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ResidentLayout() {
   return (
-    <Stack
+    <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: '#1a73e8' },
+        headerStyle: { backgroundColor: '#1B6B3A' },
         headerTintColor: '#FFFFFF',
         headerTitleStyle: { fontWeight: '700' },
+        tabBarActiveTintColor: '#1B6B3A',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarStyle: { borderTopColor: '#E5E7EB' },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Home' }} />
-    </Stack>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="visitors"
+        options={{
+          title: 'Visitors',
+          tabBarLabel: 'Visitors',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      {/* Non-tab screens — hidden from tab bar */}
+      <Tabs.Screen
+        name="approve/[visitorId]"
+        options={{
+          href: null,
+          title: 'Visitor Approval',
+          presentation: 'modal',
+        }}
+      />
+      <Tabs.Screen
+        name="notices"
+        options={{
+          href: null,
+          title: 'Notices',
+        }}
+      />
+    </Tabs>
   );
 }

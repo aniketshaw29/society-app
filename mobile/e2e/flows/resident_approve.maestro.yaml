@@ -1,0 +1,22 @@
+appId: com.societyapp.mobile
+---
+# ============================================================
+# E2E Flow: Resident approves a visitor
+# Precondition: guard has already logged a visitor for the
+# resident's flat via POST /visitors. The resident receives
+# a push notification or sees the card on their home screen.
+# ============================================================
+
+# 1. Launch the app (resident is already logged in)
+- launchApp:
+    clearState: false
+
+# 2. The home screen should show a pending approval card OR
+#    the in-app push notification banner
+- assertVisible: "Visitor at Gate"
+
+# 3. Tap the pending approval card / notification to open the approval screen
+- tapOn: "Allow Entry"
+
+# 4. The approval screen closes and shows a success confirmation
+- assertVisible: "Entry Approved"

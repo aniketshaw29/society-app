@@ -188,6 +188,65 @@ export interface AppNotification {
 }
 
 // ---------------------------------------------------------------------------
+// Visitor Log (gate-centric view, aligned with DB visitor_logs table)
+// ---------------------------------------------------------------------------
+
+export type VisitorLogStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'entered'
+  | 'exited'
+  | 'expired';
+
+export type VisitorLogEntryMethod = 'manual' | 'qr_code' | 'otp' | 'pre_approved';
+
+export interface VisitorLog {
+  id: string;
+  societyId: string;
+  flatId: string;
+  guardId?: string | null;
+  visitorName: string;
+  visitorPhone?: string | null;
+  visitorPhotoUrl?: string | null;
+  vehicleNumber?: string | null;
+  purpose?: string | null;
+  entryMethod: VisitorLogEntryMethod;
+  status: VisitorLogStatus;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  entryTime?: string | null;
+  exitTime?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields (returned from detail endpoints)
+  flat?: {
+    flatNumber: string;
+    buildingName?: string;
+  } | null;
+  approver?: {
+    fullName?: string | null;
+    phone?: string | null;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------
+// History filters
+// ---------------------------------------------------------------------------
+
+export type HistoryDateRange = 'today' | 'week' | 'month' | 'custom';
+
+export interface HistoryFilters {
+  status?: VisitorLogStatus | '';
+  dateRange?: HistoryDateRange;
+  fromDate?: string;
+  toDate?: string;
+  flatId?: string;
+  page?: number;
+  limit?: number;
+}
+
+// ---------------------------------------------------------------------------
 // API Response helpers
 // ---------------------------------------------------------------------------
 

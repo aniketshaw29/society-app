@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { useRoleRouter } from '@/hooks/useRoleRouter';
+import { setupNotifications } from '@/lib/notifications';
 import type { Session } from '@supabase/supabase-js';
 import type { UserRole } from '@/types';
 
@@ -30,6 +31,8 @@ function AuthGuard() {
 
   // true while we're waiting for getSession() to resolve the first time
   const [initialising, setInitialising] = useState(true);
+  // cleanup ref for notification subscriptions
+  const notifCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Bootstrap: get initial session once on mount ───────────────────────
   useEffect(() => {
@@ -69,18 +72,29 @@ function AuthGuard() {
             setSocietyId(null);
             setFlatId(null);
           }
+
+          // Setup notifications after auth is confirmed
+          setupNotifications(router).then((cleanup) => {
+            // Replace any prior subscription cleanup
+            notifCleanupRef.current?.();
+            notifCleanupRef.current = cleanup;
+          });
         }
 
         if (event === 'SIGNED_OUT') {
           setRole(null);
           setSocietyId(null);
           setFlatId(null);
+          // Teardown notification listeners on logout
+          notifCleanupRef.current?.();
+          notifCleanupRef.current = null;
         }
       }
     );
 
     return () => {
       authListener.subscription.unsubscribe();
+      notifCleanupRef.current?.();
     };
   }, [setSession, setRole, setSocietyId, setFlatId]);
 

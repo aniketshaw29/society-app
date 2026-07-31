@@ -7,6 +7,7 @@ import { validateEnv, config } from './config';
 import healthRouter from './routes/health';
 import societiesRouter from './routes/societies';
 import onboardingRouter from './routes/onboarding';
+import visitorsRouter from './routes/visitors';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
@@ -106,7 +107,7 @@ app.use('/health', healthRouter);
 app.use('/auth', authLimiter);
 
 // ============================================================
-// Feature routes (Phase 1 onboarding)
+// Feature routes
 // ============================================================
 
 // Society self-registration + invite code lookup + join
@@ -115,6 +116,9 @@ app.use('/societies', societiesRouter);
 // Admin onboarding: buildings, flats, residents, guards
 // Routes are mounted at /onboarding/societies/:societyId/...
 app.use('/onboarding', onboardingRouter);
+
+// Visitor management: guard logs entry, residents approve/deny
+app.use('/visitors', visitorsRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {
