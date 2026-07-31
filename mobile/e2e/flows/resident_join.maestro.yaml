@@ -1,0 +1,83 @@
+appId: com.societyapp.mobile
+---
+# ============================================================
+# E2E Flow: Resident joins a society via invite code
+# Preconditions:
+#   - App is freshly launched (or user is logged out)
+#   - Test society "Sunrise Apartments" exists with invite code ABCD23
+#   - Flat "A-101" exists in that society
+# ============================================================
+
+- launchApp:
+    clearState: false
+
+# ── Auth: already logged-in (session persisted) ──────────────
+# If not logged in, OTP flow would appear first.
+# This test assumes a valid session is already stored.
+
+# Navigate to the onboarding choose screen
+# (Root layout redirects un-onboarded users here automatically)
+
+- assertVisible: "Join my Society"
+
+- tapOn: "Join my Society"
+
+# ── join-society screen ──────────────────────────────────────
+
+- assertVisible: "Join a Society"
+
+# Type the invite code character by character into the 6 boxes
+- tapOn:
+    index: 0
+    text: ""
+- inputText: "A"
+- tapOn:
+    index: 1
+    text: ""
+- inputText: "B"
+- tapOn:
+    index: 2
+    text: ""
+- inputText: "C"
+- tapOn:
+    index: 3
+    text: ""
+- inputText: "D"
+- tapOn:
+    index: 4
+    text: ""
+- inputText: "2"
+- tapOn:
+    index: 5
+    text: ""
+- inputText: "3"
+
+- tapOn: "Find Society"
+
+# ── Society confirmation card ────────────────────────────────
+
+- assertVisible: "Sunrise Apartments"
+- assertVisible: "Found"
+
+- tapOn: "Join Sunrise Apartments"
+
+# ── select-flat screen ───────────────────────────────────────
+
+- assertVisible: "Select Your Flat"
+
+# Enter full name
+- tapOn: "Your Full Name"
+- inputText: "Priya Sharma"
+
+# Select flat A-101 from the picker list
+- tapOn: "A-101"
+
+# Confirm selection visible
+- assertVisible: "A-101"
+
+# Tap the join button
+- tapOn: "Join Sunrise Apartments"
+
+# ── Resident dashboard ───────────────────────────────────────
+
+- assertVisible: "Home"
