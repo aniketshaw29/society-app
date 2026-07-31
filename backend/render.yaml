@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: society-app-backend
+    runtime: node
+    region: singapore  # Choose region closest to your users
+    plan: starter       # starter | standard | pro
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 3000
+
+      - key: SUPABASE_URL
+        sync: false  # Set manually in Render dashboard
+
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false  # Set manually — never commit this value
+
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false  # Paste full key with \n newlines in Render dashboard
+
+      - key: FRONTEND_URL
+        sync: false  # e.g., https://your-app.vercel.app
+
+      - key: API_SECRET_KEY
+        generateValue: true  # Render auto-generates a random value
