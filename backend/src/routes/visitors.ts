@@ -7,7 +7,6 @@ import {
   notifyFlatResidents,
   notifyGuard,
 } from '../services/notificationService';
-import { parsePagination } from '../types';
 
 const router = Router();
 

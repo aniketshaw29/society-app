@@ -1,0 +1,43 @@
+appId: com.societyapp.mobile
+---
+# ============================================================
+# E2E Flow: Guard logs a visitor at the gate
+# Prerequisites:
+#   - Guard is already logged in and on the Gate tab
+#   - Society has at least one flat (e.g. A-101)
+#   - Backend is running and reachable
+# ============================================================
+
+- launchApp
+
+# Guard should land on the Gate screen
+- assertVisible: "Gate"
+
+# Open the Log Visitor form
+- tapOn: "Log Visitor"
+
+# Fill in visitor name
+- tapOn:
+    id: "visitor-name-input"
+- inputText: "Rahul Kumar"
+
+# Select purpose: Guest
+- tapOn: "Guest"
+
+# Search for and select flat A-101
+- tapOn:
+    id: "flat-search-input"
+- inputText: "A-101"
+- tapOn: "A-101"
+
+# Submit the visitor log
+- tapOn: "Submit"
+
+# Confirm success banner / confirmation message
+- assertVisible: "Visitor Logged"
+
+# Visitor card should now appear in the gate list
+- assertVisible: "Rahul Kumar"
+
+# Status badge should show 'pending' awaiting resident approval
+- assertVisible: "pending"
