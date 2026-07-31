@@ -291,28 +291,6 @@ export interface OtpVerifyError {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-Approval
-// ---------------------------------------------------------------------------
-
-export type PreApprovalStatus = 'active' | 'used' | 'cancelled' | 'expired';
-
-export interface PreApproval {
-  id: string;
-  societyId: string;
-  flatId: string;
-  residentId: string;
-  guestName: string;
-  guestPhone: string | null;
-  validFrom: string;
-  validUntil: string;
-  status: PreApprovalStatus;
-  usedAt: string | null;
-  note: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ---------------------------------------------------------------------------
 // Recurring Staff
 // ---------------------------------------------------------------------------
 
@@ -361,6 +339,27 @@ export interface StaffVisit {
 }
 
 
+// ---------------------------------------------------------------------------
+// SOS Alert (T4-5)
+// ---------------------------------------------------------------------------
+
+export type SosAlertStatus = 'active' | 'resolved';
+
+export interface SosAlert {
+  id: string;
+  societyId: string;
+  flatId: string;
+  residentId: string;
+  message: string;
+  status: SosAlertStatus;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+
 export type HistoryDateRange = 'today' | 'week' | 'month' | 'custom';
 
 export interface HistoryFilters {
@@ -369,8 +368,25 @@ export interface HistoryFilters {
   fromDate?: string;
   toDate?: string;
   flatId?: string;
+  search?: string;
   page?: number;
   limit?: number;
+}
+
+// ---------------------------------------------------------------------------
+// UserProfile (flat member)
+// ---------------------------------------------------------------------------
+
+export interface UserProfile {
+  id: string;
+  fullName: string | null;
+  phone: string | null;
+  role: UserRole;
+  flatId: string | null;
+  societyId: string | null;
+  isActive: boolean;
+  joinedAt: string;
+  avatarUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,8 @@
+appId: com.societyapp.mobile
+---
+- launchApp
+- tapOn: "SOS"
+- longPressOn:
+    text: "Hold for 3s"
+    duration: 3500
+- assertVisible: "Help is on the way"

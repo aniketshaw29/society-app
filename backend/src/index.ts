@@ -10,6 +10,7 @@ import onboardingRouter from './routes/onboarding';
 import visitorsRouter from './routes/visitors';
 import preApprovalsRouter from './routes/preApprovals';
 import recurringStaffRouter from './routes/recurringStaff';
+import sosRouter from './routes/sos';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
@@ -127,6 +128,9 @@ app.use('/pre-approvals', preApprovalsRouter);
 
 // Recurring staff management: residents manage daily staff, guards log entries
 app.use('/recurring-staff', recurringStaffRouter);
+
+// SOS alerts: residents trigger emergency, guards/admins resolve
+app.use('/sos', sosRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {

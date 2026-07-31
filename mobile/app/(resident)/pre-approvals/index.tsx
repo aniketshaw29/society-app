@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -85,7 +84,6 @@ export default function PreApprovalsScreen() {
 
   const [activeTab, setActiveTab] = useState<PreApprovalTab>('active');
   const [refreshing, setRefreshing] = useState(false);
-  const [cancelPending, setCancelPending] = useState<string | null>(null);
 
   const counts = getCounts(preApprovals);
   const items = getTabItems(preApprovals, activeTab);
@@ -109,7 +107,6 @@ export default function PreApprovalsScreen() {
             text: 'Yes, Cancel',
             style: 'destructive',
             onPress: async () => {
-              setCancelPending(pa.id);
               try {
                 await cancel(pa.id);
               } catch {
@@ -117,8 +114,6 @@ export default function PreApprovalsScreen() {
                   'Error',
                   'Could not cancel the pre-approval. Please try again.'
                 );
-              } finally {
-                setCancelPending(null);
               }
             },
           },

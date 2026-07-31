@@ -158,8 +158,8 @@ export default function PreApprovalDetailScreen() {
           )}
           <DetailRow label="Valid From" value={validFrom.toLocaleString()} />
           <DetailRow label="Valid Until" value={validUntil.toLocaleString()} />
-          {preApproval.note && (
-            <DetailRow label="Note" value={preApproval.note} />
+          {preApproval.purpose && (
+            <DetailRow label="Note" value={preApproval.purpose} />
           )}
           {preApproval.usedAt && (
             <DetailRow label="Used At" value={new Date(preApproval.usedAt).toLocaleString()} />

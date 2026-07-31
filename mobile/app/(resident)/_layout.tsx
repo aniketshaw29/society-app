@@ -13,6 +13,7 @@ export default function ResidentLayout() {
         tabBarStyle: { borderTopColor: '#E5E7EB' },
       }}
     >
+      {/* ── Bottom tab screens ─────────────────────────────── */}
       <Tabs.Screen
         name="index"
         options={{
@@ -29,17 +30,17 @@ export default function ResidentLayout() {
           title: 'Visitors',
           tabBarLabel: 'Visitors',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="staff"
+        name="notices"
         options={{
-          title: 'Staff',
-          tabBarLabel: 'Staff',
+          title: 'Notices',
+          tabBarLabel: 'Notices',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-add-outline" size={size} color={color} />
+            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />
@@ -49,11 +50,14 @@ export default function ResidentLayout() {
           title: 'Profile',
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="person-circle-outline" size={size} color={color} />
           ),
         }}
       />
-      {/* Non-tab screens — hidden from tab bar */}
+
+      {/* ── Non-tab screens (hidden from tab bar) ──────────── */}
+
+      {/* Visitor approval modal */}
       <Tabs.Screen
         name="approve/[visitorId]"
         options={{
@@ -62,21 +66,25 @@ export default function ResidentLayout() {
           presentation: 'modal',
         }}
       />
+
+      {/* SOS screen */}
       <Tabs.Screen
-        name="notices"
+        name="sos"
         options={{
           href: null,
-          title: 'Notices',
+          title: 'Emergency SOS',
+          headerStyle: { backgroundColor: '#DC2626' },
+          headerTintColor: '#FFFFFF',
         }}
       />
-      {/* Pre-approvals: list + create — nested under pre-approvals/ */}
+
+      {/* Pre-approvals */}
       <Tabs.Screen
         name="pre-approvals/index"
         options={{
           href: null,
           title: 'Pre-Approvals',
           headerShown: true,
-          headerRight: () => null,
         }}
       />
       <Tabs.Screen
@@ -87,7 +95,6 @@ export default function ResidentLayout() {
           headerShown: true,
         }}
       />
-      {/* Pre-approval detail + QR display */}
       <Tabs.Screen
         name="pre-approvals/[id]"
         options={{
@@ -96,7 +103,43 @@ export default function ResidentLayout() {
           headerShown: true,
         }}
       />
-      {/* Add / edit staff form */}
+      <Tabs.Screen
+        name="pre-approvals/qr-modal"
+        options={{
+          href: null,
+          title: 'Guest QR Code',
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+
+      {/* Flat members */}
+      <Tabs.Screen
+        name="flat-members/index"
+        options={{
+          href: null,
+          title: 'Flat Members',
+          headerShown: true,
+        }}
+      />
+      <Tabs.Screen
+        name="flat-members/add"
+        options={{
+          href: null,
+          title: 'Add Member',
+          headerShown: true,
+        }}
+      />
+
+      {/* Staff — accessible via dashboard quick action, removed from tabs */}
+      <Tabs.Screen
+        name="staff/index"
+        options={{
+          href: null,
+          title: 'Manage Staff',
+          headerShown: true,
+        }}
+      />
       <Tabs.Screen
         name="staff/add"
         options={{
