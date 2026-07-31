@@ -1,0 +1,12 @@
+appId: com.societyapp.mobile
+---
+- launchApp
+- tapOn: "Pre-approve Guest"
+- tapOn:
+    id: "guest-name-input"
+- inputText: "Priya Sharma"
+- tapOn:
+    id: "guest-phone-input"
+- inputText: "9111111111"
+- tapOn: "Send OTP to Guest"
+- assertVisible: "OTP sent"

@@ -105,6 +105,20 @@ app.use((req, _res, next) => {
 });
 
 // ============================================================
+// Response time logging
+// ============================================================
+app.use((req, res, next) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    const duration = Date.now() - start
+    if (duration > 500) {
+      console.warn(`SLOW: ${req.method} ${req.path} took ${duration}ms`)
+    }
+  })
+  next()
+})
+
+// ============================================================
 // Routes
 // ============================================================
 

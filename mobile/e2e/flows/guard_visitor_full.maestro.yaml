@@ -1,0 +1,25 @@
+appId: com.societyapp.mobile
+---
+- launchApp
+# Guard logs in
+- tapOn:
+    id: "phone-input"
+- inputText: "9000000001"
+- tapOn: "Send OTP"
+- tapOn:
+    id: "otp-input-0"
+- inputText: "123456"
+- tapOn: "Verify"
+- assertVisible: "Gate"
+# Log visitor
+- tapOn: "Log Visitor"
+- tapOn:
+    id: "visitor-name-input"
+- inputText: "Rahul Kumar"
+- tapOn: "Guest"
+- tapOn: "A-101"
+- tapOn: "Submit"
+- assertVisible: "Rahul Kumar"
+- assertVisible: "pending"
+# Simulate approval (real flow requires two devices; this tests guard side only)
+- assertVisible: "Gate"

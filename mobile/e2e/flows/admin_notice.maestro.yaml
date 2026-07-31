@@ -1,0 +1,14 @@
+appId: com.societyapp.mobile
+---
+- launchApp
+- tapOn: "Notices"
+- tapOn:
+    text: "+"
+- tapOn:
+    id: "notice-title-input"
+- inputText: "Important: Society Meeting"
+- tapOn:
+    id: "notice-body-input"
+- inputText: "Meeting scheduled for Sunday 10am at Club House"
+- tapOn: "Publish"
+- assertVisible: "Important: Society Meeting"

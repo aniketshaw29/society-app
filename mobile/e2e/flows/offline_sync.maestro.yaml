@@ -1,0 +1,10 @@
+appId: com.societyapp.mobile
+---
+- launchApp
+- assertVisible: "Gate"
+# The SyncStatusBar should show online initially
+- assertVisible: "Synced"
+# Note: actual offline simulation requires device network toggle
+# This flow verifies the UI elements are present
+- tapOn: "Log Visitor"
+- assertVisible: "Log Visitor"
