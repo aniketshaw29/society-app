@@ -1,6 +1,21 @@
 # Society App
 
+![CI](https://github.com/aniketshaw29/society-app/actions/workflows/ci.yml/badge.svg)
+
 A multi-tenant Society Management SaaS platform built for residential housing societies in India. Inspired by MyGate, purpose-built for smaller societies that need an affordable, self-hosted or cloud-hosted solution.
+
+---
+
+## Development Status
+
+| Phase | Description | Status |
+|---|---|---|
+| Phase 0 | Project scaffold, CI, Supabase schema, env config | In Progress |
+| Phase 1 | Auth (phone OTP), resident onboarding, society invite flow | Pending |
+| Phase 2 | Visitor management, gate entry/exit logging | Pending |
+| Phase 3 | Announcements, push notifications (FCM) | Pending |
+| Phase 4 | Maintenance billing, facility booking | Pending |
+| Phase 5 | Admin dashboard, multi-society management | Pending |
 
 ---
 

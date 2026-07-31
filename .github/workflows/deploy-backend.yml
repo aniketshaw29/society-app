@@ -1,0 +1,21 @@
+name: Deploy Backend to Render
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  render-deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        # Render auto-deploys from the main branch when connected via GitHub.
+        # This step also manually triggers the deploy hook so that a deployment
+        # is kicked off immediately even if Render's GitHub polling has a delay.
+        run: |
+          curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+            -o /dev/null \
+            -w "HTTP status: %{http_code}\n"
