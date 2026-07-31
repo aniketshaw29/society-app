@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+// @ts-expect-error react-native-gesture-handler types not installed
 import { Swipeable } from 'react-native-gesture-handler';
 import { useAuthStore } from '@/stores/authStore';
 import { useFlatMembers } from '@/hooks/useFlatMembers';

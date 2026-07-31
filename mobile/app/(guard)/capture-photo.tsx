@@ -90,10 +90,7 @@ export default function CapturePhotoScreen() {
   const handleUsePhoto = useCallback(() => {
     if (!capturedUri) return;
     // Navigate back with the captured URI as a param
-    router.navigate({
-      pathname: returnTo as Parameters<typeof router.navigate>[0],
-      params: { photoUri: capturedUri },
-    });
+    router.navigate(returnTo as Parameters<typeof router.navigate>[0]);
   }, [capturedUri, returnTo]);
 
   // ── Preview mode (after capture) ─────────────────────────────────────────

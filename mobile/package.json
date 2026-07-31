@@ -24,6 +24,7 @@
     "expo-device": "~6.0.0",
     "expo-file-system": "~17.0.0",
     "expo-haptics": "~13.0.0",
+    "expo-image-manipulator": "^57.0.7",
     "expo-image-picker": "~15.0.0",
     "expo-linking": "~6.3.0",
     "expo-local-authentication": "~14.0.0",
@@ -43,6 +44,8 @@
   "devDependencies": {
     "@babel/core": "^7.24.0",
     "@testing-library/react-native": "^12.4.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.2",
     "@types/react": "~18.2.0",
     "@types/react-native": "~0.73.0",
     "babel-plugin-module-resolver": "^5.0.3",

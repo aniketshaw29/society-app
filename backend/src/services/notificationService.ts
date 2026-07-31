@@ -16,17 +16,19 @@ export interface NotificationPayload {
 // ============================================================
 
 async function getFlatResidentTokens(flatId: string): Promise<string[]> {
+  const { data: profiles } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id')
+    .eq('flat_id', flatId)
+    .eq('is_active', true);
+
+  const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+  if (userIds.length === 0) return [];
+
   const { data, error } = await supabaseAdmin
     .from('fcm_tokens')
     .select('token')
-    .in(
-      'user_id',
-      supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('flat_id', flatId)
-        .eq('is_active', true)
-    );
+    .in('user_id', userIds);
 
   if (error || !data) {
     console.error('[notificationService] getFlatResidentTokens error:', error?.message);
@@ -37,17 +39,19 @@ async function getFlatResidentTokens(flatId: string): Promise<string[]> {
 }
 
 async function getSocietyMemberTokens(societyId: string): Promise<string[]> {
+  const { data: profiles } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id')
+    .eq('society_id', societyId)
+    .eq('is_active', true);
+
+  const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+  if (userIds.length === 0) return [];
+
   const { data, error } = await supabaseAdmin
     .from('fcm_tokens')
     .select('token')
-    .in(
-      'user_id',
-      supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('society_id', societyId)
-        .eq('is_active', true)
-    );
+    .in('user_id', userIds);
 
   if (error || !data) {
     console.error('[notificationService] getSocietyMemberTokens error:', error?.message);

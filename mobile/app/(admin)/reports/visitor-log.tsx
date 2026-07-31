@@ -109,7 +109,7 @@ export default function VisitorLogScreen() {
 
       <ReportTable
         columns={COLUMNS}
-        data={rows as Record<string, unknown>[]}
+        data={rows as unknown as Record<string, unknown>[]}
         loading={loading}
         emptyText="No visitor records for the selected period."
       />

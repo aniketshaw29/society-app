@@ -128,8 +128,8 @@ export function PreApprovalQR({ qrPayload, guestName, validUntil }: PreApprovalQ
   return (
     <View style={styles.container}>
       {ViewShot ? (
-        // @ts-expect-error dynamic import type
-        <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1.0 }}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <ViewShot ref={viewShotRef as any} options={{ format: 'png', quality: 1.0 } as any}>
           {inner}
         </ViewShot>
       ) : (

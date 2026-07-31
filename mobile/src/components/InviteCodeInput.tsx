@@ -69,7 +69,7 @@ export function InviteCodeInput({
     const updated = [...value];
     let charIdx = 0;
     for (let i = startIndex; i < CODE_LENGTH && charIdx < cleaned.length; i++) {
-      updated[i] = cleaned[charIdx++];
+      updated[i] = cleaned[charIdx++] ?? '';
     }
     onChange(updated);
     // Focus the next empty box

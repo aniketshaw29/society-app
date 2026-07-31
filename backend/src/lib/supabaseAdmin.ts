@@ -1,22 +1,24 @@
-import { createClient } from '@supabase/supabase-js';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { getConfig } from '../config';
 
 // Lazily initialized to allow config validation to run first
-let _adminClient: ReturnType<typeof createClient> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _adminClient: SupabaseClient<any> | null = null;
 
 /**
  * Supabase admin client using the service role key.
  * BYPASSES Row Level Security — use only in trusted server-side code.
  * Never expose this client or its key to the frontend.
  */
-export function getSupabaseAdmin(): ReturnType<typeof createClient> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getSupabaseAdmin(): SupabaseClient<any> {
   if (!_adminClient) {
     const cfg = getConfig();
     _adminClient = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_SERVICE_ROLE_KEY, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
-        detectSessionInContext: false,
       },
     });
   }
@@ -24,8 +26,10 @@ export function getSupabaseAdmin(): ReturnType<typeof createClient> {
 }
 
 // Convenience export — initialized on first access
-export const supabaseAdmin = new Proxy({} as ReturnType<typeof createClient>, {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const supabaseAdmin: SupabaseClient<any> = new Proxy({} as SupabaseClient<any>, {
   get(_target, prop: string | symbol) {
-    return getSupabaseAdmin()[prop as keyof ReturnType<typeof createClient>];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getSupabaseAdmin() as any)[prop as string];
   },
 });

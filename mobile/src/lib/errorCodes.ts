@@ -54,6 +54,6 @@ export function getErrorMessage(code: string, fallback?: string): string {
     ERROR_MESSAGES[code] ??
     ERROR_MESSAGES[code.toLowerCase()] ??
     fallback ??
-    ERROR_MESSAGES['server_error']
+    (ERROR_MESSAGES['server_error'] as string)
   )
 }

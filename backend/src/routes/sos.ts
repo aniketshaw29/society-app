@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { supabaseAdmin } from '../lib/supabaseAdmin';
 import { authenticate, requireRole } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-import { sendPushToMany } from '../lib/firebase';
 
 const router = Router();
 router.use(authenticate);
@@ -62,18 +61,20 @@ async function getTokensByRole(
   societyId: string,
   roles: string[]
 ): Promise<string[]> {
+  const { data: profiles } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id')
+    .eq('society_id', societyId)
+    .in('role', roles)
+    .eq('is_active', true);
+
+  const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+  if (userIds.length === 0) return [];
+
   const { data, error } = await supabaseAdmin
     .from('fcm_tokens')
     .select('token')
-    .in(
-      'user_id',
-      supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('society_id', societyId)
-        .in('role', roles)
-        .eq('is_active', true)
-    );
+    .in('user_id', userIds);
 
   if (error || !data) {
     console.error('[sos] getTokensByRole error:', error?.message);

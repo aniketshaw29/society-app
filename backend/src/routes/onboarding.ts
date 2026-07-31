@@ -205,21 +205,21 @@ const addFlat: RequestHandler = async (req, res, next) => {
     }
 
     // Update total_flats count on society
-    await supabaseAdmin.rpc('increment_society_flat_count', { p_society_id: societyId }).catch(() => {
+    try {
+      await supabaseAdmin.rpc('increment_society_flat_count', { p_society_id: societyId });
+    } catch {
       // RPC may not exist yet; fall back to manual count update
-      supabaseAdmin
+      const { count } = await supabaseAdmin
         .from('flats')
         .select('*', { count: 'exact', head: true })
-        .eq('society_id', societyId)
-        .then(({ count }) => {
-          if (count !== null) {
-            supabaseAdmin
-              .from('societies')
-              .update({ total_flats: count })
-              .eq('id', societyId);
-          }
-        });
-    });
+        .eq('society_id', societyId);
+      if (count !== null) {
+        await supabaseAdmin
+          .from('societies')
+          .update({ total_flats: count })
+          .eq('id', societyId);
+      }
+    }
 
     res.status(201).json({
       flat: {

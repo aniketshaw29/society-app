@@ -433,7 +433,7 @@ const getVisitor: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const row = log as Record<string, unknown> & { guards: { user_id: string } | null };
+    const row = log as unknown as Record<string, unknown> & { guards: { user_id: string } | null };
 
     // Residents can only view visitors for their own flat
     const isPrivileged =

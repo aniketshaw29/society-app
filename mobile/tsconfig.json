@@ -20,7 +20,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@app/*": ["./app/*"]
-    }
+    },
+    "types": ["jest", "node"]
   },
   "include": [
     "**/*.ts",

@@ -128,7 +128,7 @@ export default function ResidentsScreen() {
               <View style={styles.residentInfo}>
                 <Text style={styles.residentName}>{item.fullName}</Text>
                 <Text style={styles.residentMeta}>
-                  {item.flatLabel} · {item.residentType === 'flat_owner' ? 'Owner' : 'Tenant'}
+                  {item.flatLabel} · {item.residentType === 'owner' ? 'Owner' : 'Tenant'}
                 </Text>
               </View>
             </View>

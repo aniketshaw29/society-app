@@ -25,7 +25,7 @@ export function DayOfWeekPicker({ value, onChange }: DayOfWeekPickerProps) {
   };
 
   return (
-    <View style={styles.row} accessibilityRole="group" accessibilityLabel="Days of week picker">
+    <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Days of week picker">
       {DAY_LABELS.map((label, index) => {
         const isSelected = value.includes(index);
         return (

@@ -28,17 +28,19 @@ export async function getTokensForAudience(
 ): Promise<string[]> {
   if (audience === 'all') {
     // All active user_profiles in the society
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('society_id', societyId)
+      .eq('is_active', true);
+
+    const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+    if (userIds.length === 0) return [];
+
     const { data, error } = await supabaseAdmin
       .from('fcm_tokens')
       .select('token')
-      .in(
-        'user_id',
-        supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .eq('society_id', societyId)
-          .eq('is_active', true)
-      );
+      .in('user_id', userIds);
 
     if (error || !data) {
       console.error('[noticeScheduler] getTokensForAudience(all) error:', error?.message);
@@ -49,18 +51,20 @@ export async function getTokensForAudience(
 
   if (audience === 'guards') {
     // All guards in society
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('society_id', societyId)
+      .eq('role', 'guard')
+      .eq('is_active', true);
+
+    const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+    if (userIds.length === 0) return [];
+
     const { data, error } = await supabaseAdmin
       .from('fcm_tokens')
       .select('token')
-      .in(
-        'user_id',
-        supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .eq('society_id', societyId)
-          .eq('role', 'guard')
-          .eq('is_active', true)
-      );
+      .in('user_id', userIds);
 
     if (error || !data) {
       console.error('[noticeScheduler] getTokensForAudience(guards) error:', error?.message);
@@ -86,17 +90,19 @@ export async function getTokensForAudience(
 
     const ids = flatIds.map((f: { id: string }) => f.id);
 
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .in('flat_id', ids)
+      .eq('is_active', true);
+
+    const userIds = (profiles ?? []).map((p: { id: string }) => p.id);
+    if (userIds.length === 0) return [];
+
     const { data, error } = await supabaseAdmin
       .from('fcm_tokens')
       .select('token')
-      .in(
-        'user_id',
-        supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .in('flat_id', ids)
-          .eq('is_active', true)
-      );
+      .in('user_id', userIds);
 
     if (error || !data) {
       console.error('[noticeScheduler] getTokensForAudience(building) error:', error?.message);

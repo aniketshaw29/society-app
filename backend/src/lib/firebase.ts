@@ -195,17 +195,21 @@ export async function sendPushToSociety(
 ): Promise<MulticastResult> {
   const { supabaseAdmin } = await import('./supabaseAdmin');
 
+  const { data: userProfiles } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id')
+    .eq('society_id', societyId)
+    .eq('is_active', true);
+
+  const userIds = (userProfiles ?? []).map((u: { id: string }) => u.id);
+  if (userIds.length === 0) {
+    return { successCount: 0, failureCount: 0, results: [], invalidTokens: [] };
+  }
+
   const { data: tokens, error } = await supabaseAdmin
     .from('fcm_tokens')
     .select('token, user_id')
-    .in(
-      'user_id',
-      supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('society_id', societyId)
-        .eq('is_active', true)
-    );
+    .in('user_id', userIds);
 
   if (error || !tokens || tokens.length === 0) {
     return { successCount: 0, failureCount: 0, results: [], invalidTokens: [] };

@@ -63,6 +63,7 @@ export default function ResidentLayout() {
         options={{
           href: null,
           title: 'Visitor Approval',
+          // @ts-expect-error presentation is a valid Expo Router option but not in Tabs.Screen types
           presentation: 'modal',
         }}
       />
@@ -108,6 +109,7 @@ export default function ResidentLayout() {
         options={{
           href: null,
           title: 'Guest QR Code',
+          // @ts-expect-error presentation is valid Expo Router option
           presentation: 'modal',
           headerShown: false,
         }}
