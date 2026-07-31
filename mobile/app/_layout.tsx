@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { useRoleRouter } from '@/hooks/useRoleRouter';
 import { setupNotifications } from '@/lib/notifications';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { ErrorFallback } from '@/components/shared/ErrorFallback';
 import type { Session } from '@supabase/supabase-js';
 import type { UserRole } from '@/types';
 
@@ -145,7 +147,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="auto" />
-      <AuthGuard />
+      <ErrorBoundary fallback={<ErrorFallback />}>
+        <AuthGuard />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

@@ -1,8 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { AppError as LibAppError } from '../lib/AppError';
 
 // ============================================================
 // Application-level error class
+// Re-exported for backwards compatibility — routes may import
+// AppError from either location; both share the same instanceof
+// check via a common interface.
 // ============================================================
 
 export class AppError extends Error {
@@ -10,18 +14,22 @@ export class AppError extends Error {
   public readonly code: string;
   public readonly details?: unknown;
 
+  /**
+   * Supports both call signatures:
+   *   Legacy:  new AppError(statusCode, code, message, details?)
+   *   New lib: handled by ../lib/AppError — import from there for new code
+   */
   constructor(statusCode: number, code: string, message: string, details?: unknown) {
     super(message);
     this.name = 'AppError';
     this.statusCode = statusCode;
     this.code = code;
     this.details = details;
-    // Maintain proper stack trace (V8)
     Error.captureStackTrace(this, AppError);
   }
 }
 
-// Convenience constructors
+// Convenience constructors (legacy API — prefer lib/AppError in new code)
 export const Errors = {
   badRequest: (message: string, details?: unknown) =>
     new AppError(400, 'BAD_REQUEST', message, details),
@@ -79,13 +87,15 @@ export function errorHandler(
 ): void {
   const isDev = process.env['NODE_ENV'] === 'development';
 
-  // 1. Known application errors
-  if (err instanceof AppError) {
-    res.status(err.statusCode).json({
+  // 1. Known application errors — handles both AppError from this file
+  //    AND AppError from lib/AppError.ts (both have code + statusCode)
+  if (err instanceof AppError || err instanceof LibAppError) {
+    const appErr = err as { code: string; statusCode: number; message: string; details?: unknown };
+    res.status(appErr.statusCode).json({
       error: {
-        code: err.code,
-        message: err.message,
-        ...(err.details !== undefined ? { details: err.details } : {}),
+        code: appErr.code,
+        message: appErr.message,
+        ...(appErr.details !== undefined ? { details: appErr.details } : {}),
       },
     });
     return;
@@ -93,9 +103,9 @@ export function errorHandler(
 
   // 2. Zod validation errors
   if (err instanceof ZodError) {
-    res.status(400).json({
+    res.status(422).json({
       error: {
-        code: 'VALIDATION_ERROR',
+        code: 'validation_error',
         message: 'Request validation failed',
         details: formatZodError(err),
       },
@@ -105,7 +115,6 @@ export function errorHandler(
 
   // 3. Supabase/PostgREST errors
   if (isSupabaseError(err)) {
-    // Common Supabase error codes
     const supabaseCodeMap: Record<string, number> = {
       PGRST116: 404,  // No rows returned
       PGRST301: 409,  // Conflict
@@ -130,7 +139,7 @@ export function errorHandler(
   if (err instanceof Error && err.name === 'JsonWebTokenError') {
     res.status(401).json({
       error: {
-        code: 'INVALID_TOKEN',
+        code: 'unauthorized',
         message: 'Token is invalid',
       },
     });
@@ -140,7 +149,7 @@ export function errorHandler(
   if (err instanceof Error && err.name === 'TokenExpiredError') {
     res.status(401).json({
       error: {
-        code: 'TOKEN_EXPIRED',
+        code: 'unauthorized',
         message: 'Token has expired. Please sign in again.',
       },
     });
@@ -159,7 +168,7 @@ export function errorHandler(
 
     res.status(500).json({
       error: {
-        code: 'INTERNAL_SERVER_ERROR',
+        code: 'server_error',
         message: isDev ? err.message : 'An unexpected error occurred',
         ...(isDev ? { stack: err.stack } : {}),
       },
@@ -171,7 +180,7 @@ export function errorHandler(
   console.error('[ErrorHandler] Unknown error type:', err);
   res.status(500).json({
     error: {
-      code: 'INTERNAL_SERVER_ERROR',
+      code: 'server_error',
       message: 'An unexpected error occurred',
     },
   });
@@ -184,7 +193,7 @@ export function errorHandler(
 export function notFoundHandler(req: Request, res: Response): void {
   res.status(404).json({
     error: {
-      code: 'ROUTE_NOT_FOUND',
+      code: 'not_found',
       message: `Route ${req.method} ${req.path} not found`,
     },
   });
