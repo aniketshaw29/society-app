@@ -1,51 +1,52 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  Alert,
+  ScrollView,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
-import { validateIndianPhone, formatIndianPhone } from '@/utils/phone';
+import { useAuth } from '@/hooks/useAuth';
+import { validateIndianPhone } from '@/utils/phone';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { signInWithPhone } = useAuth();
+
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
+
+  const isValid = phone.length === 10 && validateIndianPhone(phone);
+
+  const handleChangeText = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 10);
+    setPhone(digits);
+    if (error) setError(null);
+  };
 
   const handleSendOtp = async () => {
-    const trimmed = phone.trim();
+    if (!isValid || loading) return;
 
-    if (!validateIndianPhone(trimmed)) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number.');
-      return;
-    }
-
-    const fullPhone = formatIndianPhone(trimmed);
     setLoading(true);
+    setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: fullPhone,
-      });
-
-      if (error) {
-        Alert.alert('Error', error.message);
-        return;
-      }
-
+      await signInWithPhone(phone);
       router.push({
         pathname: '/(auth)/otp',
-        params: { phone: fullPhone },
+        params: { phone: `+91${phone}` },
       });
-    } catch {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -56,41 +57,81 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.inner}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Welcome to</Text>
-          <Text style={styles.brand}>SocietyApp</Text>
+          <View style={styles.logoContainer}>
+            <Text style={styles.logoText}>SG</Text>
+          </View>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.brand}>SocietyGate</Text>
           <Text style={styles.subtitle}>Enter your mobile number to continue</Text>
         </View>
 
-        <View style={styles.form}>
+        {/* Card */}
+        <View style={styles.card}>
           <Text style={styles.label}>Mobile Number</Text>
-          <View style={styles.phoneRow}>
-            <View style={styles.prefix}>
+
+          <View
+            style={[
+              styles.phoneRow,
+              error ? styles.phoneRowError : null,
+              phone.length > 0 && !error ? styles.phoneRowActive : null,
+            ]}
+          >
+            {/* +91 prefix — not editable */}
+            <View style={styles.prefixContainer}>
+              <Text style={styles.prefixFlag}>🇮🇳</Text>
               <Text style={styles.prefixText}>+91</Text>
             </View>
+
+            <View style={styles.divider} />
+
             <TextInput
-              style={styles.input}
-              placeholder="10-digit mobile number"
+              ref={inputRef}
+              style={styles.phoneInput}
+              placeholder="98765 43210"
               placeholderTextColor="#9CA3AF"
-              keyboardType="number-pad"
+              keyboardType="phone-pad"
               maxLength={10}
               value={phone}
-              onChangeText={(text) => setPhone(text.replace(/\D/g, ''))}
+              onChangeText={handleChangeText}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={handleSendOtp}
+              editable={!loading}
+              testID="phone-input"
+              accessibilityLabel="Phone Number"
             />
+
+            {phone.length === 10 && isValid && (
+              <Text style={styles.checkmark}>✓</Text>
+            )}
           </View>
 
+          {error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : (
+            <Text style={styles.hintText}>
+              A 6-digit OTP will be sent via SMS
+            </Text>
+          )}
+
           <TouchableOpacity
-            style={[styles.button, (loading || phone.length !== 10) && styles.buttonDisabled]}
+            style={[styles.button, (!isValid || loading) && styles.buttonDisabled]}
             onPress={handleSendOtp}
-            disabled={loading || phone.length !== 10}
-            activeOpacity={0.8}
+            disabled={!isValid || loading}
+            activeOpacity={0.85}
+            testID="send-otp-button"
+            accessibilityLabel="Send OTP"
+            accessibilityRole="button"
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <Text style={styles.buttonText}>Send OTP</Text>
             )}
@@ -98,99 +139,187 @@ export default function LoginScreen() {
         </View>
 
         <Text style={styles.disclaimer}>
-          By continuing, you agree to our Terms of Service and Privacy Policy.
+          By continuing, you agree to our{' '}
+          <Text style={styles.disclaimerLink}>Terms of Service</Text> and{' '}
+          <Text style={styles.disclaimerLink}>Privacy Policy</Text>
         </Text>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+const BRAND_GREEN = '#1B6B3A';
+const BRAND_GREEN_DISABLED = '#8BB89E';
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F3F4F6',
   },
-  inner: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    paddingBottom: 40,
   },
   header: {
-    marginBottom: 40,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: BRAND_GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: BRAND_GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 24,
+    fontSize: 16,
     color: '#6B7280',
     fontWeight: '400',
+    marginBottom: 2,
   },
   brand: {
-    fontSize: 36,
-    color: '#1a73e8',
-    fontWeight: '700',
+    fontSize: 30,
+    color: BRAND_GREEN,
+    fontWeight: '800',
+    letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#6B7280',
+    textAlign: 'center',
   },
-  form: {
-    marginBottom: 32,
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: 24,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   phoneRow: {
     flexDirection: 'row',
-    borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginBottom: 20,
-    backgroundColor: '#F9FAFB',
-  },
-  prefix: {
-    paddingHorizontal: 14,
-    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  phoneRowActive: {
+    borderColor: BRAND_GREEN,
+    backgroundColor: '#FAFFFE',
+  },
+  phoneRowError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FFF5F5',
+  },
+  prefixContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     backgroundColor: '#F3F4F6',
-    borderRightWidth: 1.5,
-    borderRightColor: '#D1D5DB',
+    gap: 6,
+  },
+  prefixFlag: {
+    fontSize: 16,
   },
   prefixText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#374151',
   },
-  input: {
+  divider: {
+    width: 1.5,
+    height: 28,
+    backgroundColor: '#E5E7EB',
+  },
+  phoneInput: {
     flex: 1,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 18,
     color: '#111827',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+  },
+  checkmark: {
+    paddingRight: 14,
+    fontSize: 18,
+    color: BRAND_GREEN,
+    fontWeight: '700',
+  },
+  hintText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 20,
+    marginLeft: 2,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginBottom: 20,
+    marginLeft: 2,
   },
   button: {
-    backgroundColor: '#1a73e8',
-    borderRadius: 10,
+    backgroundColor: BRAND_GREEN,
+    borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: BRAND_GREEN,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#93C5FD',
+    backgroundColor: BRAND_GREEN_DISABLED,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   disclaimer: {
     textAlign: 'center',
     fontSize: 12,
     color: '#9CA3AF',
     lineHeight: 18,
+    paddingHorizontal: 16,
+  },
+  disclaimerLink: {
+    color: BRAND_GREEN,
+    fontWeight: '500',
   },
 });

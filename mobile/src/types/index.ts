@@ -6,6 +6,7 @@ export type UserRole =
   | 'guard'
   | 'resident'
   | 'flat_owner'
+  | 'tenant'
   | 'society_admin'
   | 'super_admin';
 

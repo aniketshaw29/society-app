@@ -5,6 +5,8 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { validateEnv, config } from './config';
 import healthRouter from './routes/health';
+import societiesRouter from './routes/societies';
+import onboardingRouter from './routes/onboarding';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
@@ -103,11 +105,16 @@ app.use('/health', healthRouter);
 // Auth rate limit on any future /auth routes
 app.use('/auth', authLimiter);
 
-// Example of a protected route group:
-// app.use('/api/v1/visitor-logs', authenticate, visitorLogsRouter);
-// app.use('/api/v1/notices', authenticate, noticesRouter);
-// app.use('/api/v1/guards', authenticate, requireRole('society_admin', 'super_admin'), guardsRouter);
-// app.use('/api/v1/sos', authenticate, sosRouter);
+// ============================================================
+// Feature routes (Phase 1 onboarding)
+// ============================================================
+
+// Society self-registration + invite code lookup + join
+app.use('/societies', societiesRouter);
+
+// Admin onboarding: buildings, flats, residents, guards
+// Routes are mounted at /onboarding/societies/:societyId/...
+app.use('/onboarding', onboardingRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {

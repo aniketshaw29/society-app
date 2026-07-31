@@ -1,0 +1,44 @@
+appId: com.societyapp.mobile
+---
+# ── Launch ────────────────────────────────────────────────────────────────
+- launchApp:
+    clearState: true
+
+# ── Phone number entry ────────────────────────────────────────────────────
+- assertVisible: "Welcome back"
+- assertVisible: "Phone Number"
+
+- tapOn:
+    id: "phone-input"
+
+- inputText: "9876543210"
+
+- assertVisible: "Send OTP"
+
+- tapOn: "Send OTP"
+
+# ── OTP entry screen ──────────────────────────────────────────────────────
+- assertVisible: "Enter OTP"
+- assertVisible: "xxxxxx3210"   # masked phone should be visible in subtitle
+
+# Tap first OTP box and type all 6 digits
+- tapOn:
+    id: "otp-input-0"
+- inputText: "1"
+- inputText: "2"
+- inputText: "3"
+- inputText: "4"
+- inputText: "5"
+- inputText: "6"
+
+# Verify button should now be tappable
+- tapOn: "Verify"
+
+# ── Post-auth destination ─────────────────────────────────────────────────
+# For existing users the home/dashboard screen loads;
+# for new users the onboarding choose screen loads.
+# We assert at least one of these is visible.
+- assertVisible:
+    anyOf:
+      - "Dashboard"
+      - "Welcome to SocietyGate"   # onboarding choose screen heading
