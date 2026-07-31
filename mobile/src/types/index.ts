@@ -231,8 +231,135 @@ export interface VisitorLog {
 }
 
 // ---------------------------------------------------------------------------
-// History filters
+// Pre-Approval (T3-1 / T3-2)
 // ---------------------------------------------------------------------------
+
+export type PreApprovalStatus = 'active' | 'used' | 'cancelled' | 'locked';
+
+export interface PreApproval {
+  id: string;
+  flatId: string;
+  societyId: string;
+  createdBy: string;
+  guestName: string;
+  /** Masked: e.g. "XXXXXX3210" */
+  guestPhone: string;
+  purpose: string | null;
+  validFrom: string;
+  validUntil: string;
+  status: PreApprovalStatus;
+  otpAttempts: number;
+  usedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePreApprovalInput {
+  guestName: string;
+  guestPhone: string;
+  purpose?: string;
+  validFrom: string;
+  validUntil: string;
+}
+
+export interface OtpVerifyResult {
+  visitor: {
+    id: string;
+    societyId: string;
+    flatId: string;
+    visitorName: string;
+    visitorPhone: string | null;
+    purpose: string | null;
+    entryMethod: string;
+    status: string;
+    entryTime: string | null;
+    createdAt: string;
+    flat: { flatNumber: string; buildingName: string | null } | null;
+  };
+  preApproval: {
+    guestName: string;
+    flatId: string;
+    flatNumber: string | null;
+    buildingName: string | null;
+  };
+}
+
+export interface OtpVerifyError {
+  code: 'expired' | 'wrong_otp' | 'already_used' | 'locked' | 'not_found';
+  message: string;
+  attemptsRemaining?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-Approval
+// ---------------------------------------------------------------------------
+
+export type PreApprovalStatus = 'active' | 'used' | 'cancelled' | 'expired';
+
+export interface PreApproval {
+  id: string;
+  societyId: string;
+  flatId: string;
+  residentId: string;
+  guestName: string;
+  guestPhone: string | null;
+  validFrom: string;
+  validUntil: string;
+  status: PreApprovalStatus;
+  usedAt: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Recurring Staff
+// ---------------------------------------------------------------------------
+
+export type StaffCategory = 'maid' | 'cook' | 'driver' | 'security' | 'delivery' | 'other';
+
+export interface RecurringStaff {
+  id: string;
+  societyId: string;
+  flatId: string;
+  residentId: string;
+  name: string;
+  phone: string | null;
+  category: StaffCategory;
+  /** 0 = Sunday … 6 = Saturday */
+  allowedDays: number[];
+  entryFrom: string; // HH:MM
+  entryUntil: string; // HH:MM
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStaffInput {
+  name: string;
+  phone?: string;
+  category: StaffCategory;
+  allowedDays: number[];
+  entryFrom: string;
+  entryUntil: string;
+}
+
+export interface StaffSearchResult {
+  staff: RecurringStaff;
+  flat: { flatNumber: string; buildingName: string | null } | null;
+  resident: { id: string; fullName: string | null; phone: string | null } | null;
+}
+
+export interface StaffVisit {
+  id: string;
+  staffId: string;
+  societyId: string;
+  flatId: string;
+  guardId: string | null;
+  entryTime: string;
+  createdAt: string;
+}
+
 
 export type HistoryDateRange = 'today' | 'week' | 'month' | 'custom';
 

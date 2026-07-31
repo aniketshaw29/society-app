@@ -8,6 +8,8 @@ import {
   Animated,
   RefreshControl,
   Alert,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -16,10 +18,10 @@ import { useAuthStore } from '@/stores/authStore';
 import { useRealtimeVisitors } from '@/hooks/useRealtimeVisitors';
 import { VisitorCard } from '@/components/guard/VisitorCard';
 import api from '@/lib/api';
-import type { VisitorLog } from '@/types';
+import type { VisitorLog, StaffSearchResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// Gate screen
+// Gate screen — guards see live visitor feed + entry action buttons
 // ---------------------------------------------------------------------------
 
 export default function GateScreen() {
@@ -34,6 +36,13 @@ export default function GateScreen() {
   // Approved banner: first approved visitor that hasn't been dismissed
   const [approvedBannerVisitor, setApprovedBannerVisitor] = useState<VisitorLog | null>(null);
   const bannerAnim = useRef(new Animated.Value(-100)).current;
+
+  // Staff search state
+  const [staffQuery, setStaffQuery] = useState('');
+  const [staffResults, setStaffResults] = useState<StaffSearchResult[]>([]);
+  const [staffSearching, setStaffSearching] = useState(false);
+  const [staffEntryLoading, setStaffEntryLoading] = useState<string | null>(null);
+  const staffSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // -------------------------------------------------------------------------
   // Detect status changes on UPDATE to trigger haptics + flash
@@ -117,7 +126,7 @@ export default function GateScreen() {
   }, [refresh]);
 
   // -------------------------------------------------------------------------
-  // Guard actions
+  // Guard actions — visitor
   // -------------------------------------------------------------------------
 
   const handleMarkEntered = useCallback(async (visitor: VisitorLog) => {
@@ -135,6 +144,78 @@ export default function GateScreen() {
     } catch {
       Alert.alert('Error', 'Could not mark as exited. Please try again.');
     }
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Staff search + inline entry
+  // -------------------------------------------------------------------------
+
+  const searchStaff = useCallback(
+    async (query: string) => {
+      if (!query.trim() || !societyId) {
+        setStaffResults([]);
+        return;
+      }
+      setStaffSearching(true);
+      try {
+        const isPhone = /^\d+$/.test(query.trim());
+        const params = new URLSearchParams({ societyId });
+        if (isPhone) {
+          params.set('phone', query.trim());
+        } else {
+          params.set('name', query.trim());
+        }
+        const res = await api.get<{ results: StaffSearchResult[] }>(
+          `/recurring-staff/search?${params.toString()}`
+        );
+        setStaffResults(res.data.results ?? []);
+      } catch {
+        setStaffResults([]);
+      } finally {
+        setStaffSearching(false);
+      }
+    },
+    [societyId]
+  );
+
+  const handleStaffQueryChange = (text: string) => {
+    setStaffQuery(text);
+    if (staffSearchTimer.current) clearTimeout(staffSearchTimer.current);
+    staffSearchTimer.current = setTimeout(() => void searchStaff(text), 400);
+  };
+
+  const handleStaffEntry = useCallback(async (staffId: string, staffName: string) => {
+    Alert.alert('Confirm Staff Entry', `Log entry for ${staffName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Entry',
+        onPress: async () => {
+          setStaffEntryLoading(staffId);
+          try {
+            await api.post('/visitors/staff-entry', { staffId });
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Entry Logged', `${staffName} has been logged in.`);
+            setStaffQuery('');
+            setStaffResults([]);
+          } catch (err: unknown) {
+            const code =
+              (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data
+                ?.error?.code;
+            const msg =
+              code === 'not_allowed_today'
+                ? 'Staff is not allowed today.'
+                : code === 'outside_window'
+                ? 'Outside allowed time window.'
+                : code === 'staff_inactive'
+                ? 'Staff member is inactive.'
+                : 'Could not log staff entry. Please try again.';
+            Alert.alert('Entry Failed', msg);
+          } finally {
+            setStaffEntryLoading(null);
+          }
+        },
+      },
+    ]);
   }, []);
 
   // -------------------------------------------------------------------------
@@ -169,14 +250,106 @@ export default function GateScreen() {
         </View>
       )}
 
-      {/* Log Visitor button */}
-      <TouchableOpacity
-        style={styles.logBtn}
-        onPress={() => router.push('/(guard)/log-visitor')}
-        testID="log-visitor-btn"
-      >
-        <Text style={styles.logBtnText}>+ Log Visitor</Text>
-      </TouchableOpacity>
+      {/* Action buttons row: Log Visitor | Scan QR | OTP Entry */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.logBtn]}
+          onPress={() => router.push('/(guard)/log-visitor')}
+          testID="log-visitor-btn"
+        >
+          <Text style={styles.actionBtnText}>+ Log Visitor</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.scanQrBtn]}
+          onPress={() => router.push('/(guard)/qr-scan')}
+          testID="scan-qr-btn"
+        >
+          <Text style={styles.actionBtnText}>Scan QR</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.otpBtn]}
+          onPress={() => router.push('/(guard)/otp-verify')}
+          testID="otp-entry-btn"
+          accessibilityLabel="OTP Entry"
+        >
+          <Text style={styles.otpBtnText}>OTP Entry</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Staff Entry section */}
+      <View style={styles.staffSection}>
+        <View style={styles.staffHeader}>
+          <Text style={styles.staffSectionTitle}>Staff Entry</Text>
+          <TouchableOpacity onPress={() => router.push('/(guard)/staff-search')}>
+            <Text style={styles.staffSearchLink}>Full Search</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.staffSearchRow}>
+          <TextInput
+            style={styles.staffSearchInput}
+            placeholder="Search staff by name or phone…"
+            placeholderTextColor="#9CA3AF"
+            value={staffQuery}
+            onChangeText={handleStaffQueryChange}
+            returnKeyType="search"
+            testID="staff-search-input"
+          />
+          {staffSearching && (
+            <ActivityIndicator size="small" color="#1a73e8" style={styles.staffSearchSpinner} />
+          )}
+          {staffQuery.length > 0 && !staffSearching && (
+            <TouchableOpacity
+              onPress={() => {
+                setStaffQuery('');
+                setStaffResults([]);
+              }}
+              style={styles.clearBtn}
+            >
+              <Text style={styles.clearBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {staffResults.length > 0 && (
+          <View style={styles.staffResultList}>
+            {staffResults.slice(0, 5).map((item) => (
+              <View key={item.staff.id} style={styles.staffResultCard}>
+                <View style={styles.staffResultInfo}>
+                  <Text style={styles.staffResultName}>{item.staff.name}</Text>
+                  <Text style={styles.staffResultMeta}>
+                    {item.staff.category.charAt(0).toUpperCase() + item.staff.category.slice(1)}
+                    {item.flat ? ` · Flat ${item.flat.flatNumber}` : ''}
+                  </Text>
+                  <Text style={styles.staffResultTime}>
+                    {item.staff.entryFrom} – {item.staff.entryUntil}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.logEntryBtn,
+                    staffEntryLoading === item.staff.id && styles.logEntryBtnLoading,
+                  ]}
+                  onPress={() => void handleStaffEntry(item.staff.id, item.staff.name)}
+                  disabled={staffEntryLoading === item.staff.id}
+                >
+                  {staffEntryLoading === item.staff.id ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.logEntryBtnText}>Log In</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {staffQuery.length > 0 && !staffSearching && staffResults.length === 0 && (
+          <Text style={styles.staffNoResults}>No staff found. Try a different name or phone.</Text>
+        )}
+      </View>
 
       {/* Visitor list */}
       <FlatList
@@ -235,9 +408,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 6,
   },
-  bannerContent: {
-    flex: 1,
-  },
+  bannerContent: { flex: 1 },
   bannerTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -270,28 +441,112 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
-  logBtn: {
-    margin: 16,
-    backgroundColor: '#1a73e8',
-    paddingVertical: 14,
-    borderRadius: 12,
+
+  // Action buttons row
+  actionRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  logBtnText: {
+  logBtn: { backgroundColor: '#1a73e8' },
+  scanQrBtn: { backgroundColor: '#1B6B3A' },
+  otpBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#1a73e8',
+  },
+  actionBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
-  list: {
-    paddingBottom: 24,
+  otpBtnText: {
+    color: '#1a73e8',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  empty: {
-    flex: 1,
+
+  // Staff entry section
+  staffSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  staffHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 80,
+    marginBottom: 8,
   },
-  emptyText: {
-    fontSize: 16,
+  staffSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  staffSearchLink: {
+    fontSize: 12,
+    color: '#1a73e8',
+    fontWeight: '600',
+  },
+  staffSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+  },
+  staffSearchInput: {
+    flex: 1,
+    height: 40,
+    fontSize: 14,
+    color: '#111827',
+  },
+  staffSearchSpinner: { marginLeft: 8 },
+  clearBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  clearBtnText: { color: '#9CA3AF', fontSize: 14 },
+  staffResultList: { marginTop: 6, gap: 4 },
+  staffResultCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  staffResultInfo: { flex: 1 },
+  staffResultName: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  staffResultMeta: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  staffResultTime: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
+  logEntryBtn: {
+    backgroundColor: '#1B6B3A',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  logEntryBtnLoading: { backgroundColor: '#9CA3AF' },
+  logEntryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  staffNoResults: {
+    fontSize: 13,
     color: '#9CA3AF',
+    textAlign: 'center',
+    paddingVertical: 6,
   },
+
+  list: { paddingBottom: 24 },
+  empty: { flex: 1, alignItems: 'center', paddingTop: 80 },
+  emptyText: { fontSize: 16, color: '#9CA3AF' },
 });

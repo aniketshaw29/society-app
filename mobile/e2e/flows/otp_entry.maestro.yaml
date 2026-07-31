@@ -1,0 +1,52 @@
+appId: com.societyapp.mobile
+---
+# ============================================================
+# E2E: Guard verifies a pre-approved guest OTP at the gate
+# ============================================================
+
+# 1. Launch app (guard is already logged in via persisted session)
+- launchApp
+
+# 2. Navigate to the Gate tab (should be the default for guards)
+- tapOn:
+    text: "Gate"
+
+# 3. Open OTP Entry screen from gate action buttons
+- tapOn:
+    text: "OTP Entry"
+    testId: "otp-entry-btn"
+
+# 4. Verify the OTP Entry screen header is visible
+- assertVisible:
+    text: "OTP Entry"
+
+# 5. Enter the guest's phone number
+- tapOn:
+    text: "Guest Phone"
+- inputText:
+    text: "9876543210"
+
+# 6. Enter the 6-digit OTP (each digit box accepts input)
+- tapOn:
+    testId: "otp-input-0"
+- inputText:
+    text: "123456"
+
+# 7. Submit
+- tapOn:
+    text: "Verify & Allow Entry"
+    testId: "verify-btn"
+
+# 8. Assert success screen is shown
+- assertVisible:
+    text: "Guest Admitted!"
+
+# 9. Success card should show guest name
+- assertVisible:
+    text: "Test Guest"
+
+# 10. Screen auto-closes after 3 seconds — wait and verify navigation
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertVisible:
+    text: "Gate"

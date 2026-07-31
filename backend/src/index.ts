@@ -8,6 +8,8 @@ import healthRouter from './routes/health';
 import societiesRouter from './routes/societies';
 import onboardingRouter from './routes/onboarding';
 import visitorsRouter from './routes/visitors';
+import preApprovalsRouter from './routes/preApprovals';
+import recurringStaffRouter from './routes/recurringStaff';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
@@ -119,6 +121,12 @@ app.use('/onboarding', onboardingRouter);
 
 // Visitor management: guard logs entry, residents approve/deny
 app.use('/visitors', visitorsRouter);
+
+// Pre-approvals: residents pre-approve guests with OTP; guards verify at gate
+app.use('/pre-approvals', preApprovalsRouter);
+
+// Recurring staff management: residents manage daily staff, guards log entries
+app.use('/recurring-staff', recurringStaffRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {

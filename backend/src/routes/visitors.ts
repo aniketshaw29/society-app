@@ -880,12 +880,152 @@ const markEntered: RequestHandler = async (req, res, next) => {
 };
 
 // ============================================================
+// POST /visitors/staff-entry
+// Auth: guard JWT
+// Body: { staffId }
+// Validates: staff is_active, today is in allowedDays, current time in [entryFrom, entryUntil]
+// Creates staff_visits row
+// Returns: { staffVisit } with { staff, flat }
+// ============================================================
+
+const staffEntrySchema = z.object({
+  staffId: z.string().uuid('Invalid staffId'),
+});
+
+const logStaffEntry: RequestHandler = async (req, res, next) => {
+  try {
+    const user = req.user!;
+    if (!user.society_id) {
+      throw new AppError(403, 'NO_SOCIETY', 'Guard is not assigned to a society');
+    }
+
+    const parsed = staffEntrySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+        },
+      });
+      return;
+    }
+
+    const { staffId } = parsed.data;
+
+    const { data: staff, error: staffError } = await supabaseAdmin
+      .from('recurring_staff')
+      .select('*, flats ( flat_number, buildings ( name ) )')
+      .eq('id', staffId)
+      .maybeSingle();
+
+    if (staffError || !staff) {
+      res.status(404).json({ error: { code: 'STAFF_NOT_FOUND', message: 'Staff not found' } });
+      return;
+    }
+
+    const s = staff as Record<string, unknown>;
+
+    // Guard must be in the same society as the staff
+    if (s['society_id'] !== user.society_id) {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Staff belongs to a different society' } });
+      return;
+    }
+
+    if (!s['is_active']) {
+      res.status(400).json({ error: { code: 'staff_inactive', message: 'This staff member is inactive' } });
+      return;
+    }
+
+    const now = new Date();
+    const todayDay = now.getDay(); // 0=Sunday, 6=Saturday
+    const allowedDays = s['allowed_days'] as number[];
+
+    if (!allowedDays.includes(todayDay)) {
+      res.status(400).json({
+        error: { code: 'not_allowed_today', message: 'Staff is not allowed on today' },
+      });
+      return;
+    }
+
+    // Check time window — compare HH:MM strings
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const currentTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const entryFrom = s['entry_from'] as string;
+    const entryUntil = s['entry_until'] as string;
+
+    if (currentTime < entryFrom || currentTime > entryUntil) {
+      res.status(400).json({
+        error: {
+          code: 'outside_window',
+          message: `Staff is only allowed between ${entryFrom} and ${entryUntil}`,
+        },
+      });
+      return;
+    }
+
+    // Resolve guard record id
+    const { data: guardRecord } = await supabaseAdmin
+      .from('guards')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('society_id', user.society_id)
+      .maybeSingle();
+
+    // Create staff_visits row
+    const { data: staffVisit, error: insertError } = await supabaseAdmin
+      .from('staff_visits')
+      .insert({
+        staff_id: staffId,
+        society_id: user.society_id,
+        flat_id: s['flat_id'],
+        guard_id: guardRecord?.id ?? null,
+        entry_time: now.toISOString(),
+      })
+      .select('id, staff_id, society_id, flat_id, guard_id, entry_time, created_at')
+      .single();
+
+    if (insertError || !staffVisit) {
+      throw new AppError(500, 'CREATE_FAILED', insertError?.message ?? 'Failed to log staff entry');
+    }
+
+    const flat = s['flats'] as { flat_number: string; buildings: { name: string } | null } | null;
+
+    res.status(201).json({
+      staffVisit: {
+        id: (staffVisit as Record<string, unknown>)['id'],
+        staffId,
+        societyId: user.society_id,
+        flatId: s['flat_id'],
+        guardId: (staffVisit as Record<string, unknown>)['guard_id'],
+        entryTime: (staffVisit as Record<string, unknown>)['entry_time'],
+        createdAt: (staffVisit as Record<string, unknown>)['created_at'],
+      },
+      staff: {
+        id: s['id'],
+        name: s['name'],
+        phone: s['phone'] ?? null,
+        category: s['category'],
+      },
+      flat: flat
+        ? { flatNumber: flat.flat_number, buildingName: flat.buildings?.name ?? null }
+        : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ============================================================
 // Route registration
 // NOTE: Specific paths (e.g. /active, /history) must come before
 // the parametric /:id route to avoid shadowing.
 // ============================================================
 
 router.use(authenticate);
+
+// POST /visitors/staff-entry — guard logs staff entry
+router.post('/staff-entry', requireRole('guard'), logStaffEntry);
 
 // POST /visitors — log a visitor (guard only)
 router.post('/', requireRole('guard'), logVisitor);

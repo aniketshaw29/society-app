@@ -59,6 +59,24 @@ export default function ResidentLayout() {
           title: 'Notices',
         }}
       />
+      {/* Pre-approvals: list + create — nested under pre-approvals/ */}
+      <Tabs.Screen
+        name="pre-approvals/index"
+        options={{
+          href: null,
+          title: 'Pre-Approvals',
+          headerShown: true,
+          headerRight: () => null, // header right injected by screen via useNavigation
+        }}
+      />
+      <Tabs.Screen
+        name="pre-approvals/create"
+        options={{
+          href: null,
+          title: 'New Pre-Approval',
+          headerShown: true,
+        }}
+      />
     </Tabs>
   );
 }

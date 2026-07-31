@@ -68,6 +68,33 @@ export default function GuardLayout() {
           headerShown: false,
         }}
       />
+      {/* OTP Entry — guard verifies guest pre-approval OTP */}
+      <Tabs.Screen
+        name="otp-verify"
+        options={{
+          href: null,
+          title: 'OTP Entry',
+          headerShown: true,
+        }}
+      />
+      {/* QR scan screen — guard scans resident's pre-approval QR code */}
+      <Tabs.Screen
+        name="qr-scan"
+        options={{
+          href: null,
+          title: 'Scan QR',
+          headerShown: false,
+        }}
+      />
+      {/* Staff search screen — guard searches and logs recurring staff entry */}
+      <Tabs.Screen
+        name="staff-search"
+        options={{
+          href: null,
+          title: 'Staff Search',
+          headerShown: true,
+        }}
+      />
     </Tabs>
   );
 }
