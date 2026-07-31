@@ -1,0 +1,34 @@
+appId: com.societyapp.mobile
+---
+# Guard scans QR from resident's phone to admit a pre-approved guest
+
+- launchApp
+
+# Navigate to the gate screen (guard role)
+- tapOn:
+    text: "Gate"
+
+# Tap the Scan QR button on the gate screen
+- tapOn:
+    id: "scan-qr-btn"
+
+# QR Scanner should be visible
+- assertVisible: "QR Scanner"
+- assertVisible: "Align QR code within the frame"
+
+# Simulate a QR scan via the hidden debug text input
+# (In CI, the app exposes a testID=debug-qr-input field when NODE_ENV=test)
+- tapOn:
+    id: "debug-qr-input"
+- inputText: "VALID_QR_PAYLOAD_PLACEHOLDER"
+
+# After scan, the verify-qr API call resolves → success screen
+- assertVisible: "Guest Admitted!"
+
+# Verify the done button is present
+- assertVisible: "Done"
+- tapOn:
+    text: "Done"
+
+# Back on gate screen
+- assertVisible: "Gate"

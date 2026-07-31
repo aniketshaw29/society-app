@@ -34,6 +34,16 @@ export default function ResidentLayout() {
         }}
       />
       <Tabs.Screen
+        name="staff"
+        options={{
+          title: 'Staff',
+          tabBarLabel: 'Staff',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-add-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -66,7 +76,7 @@ export default function ResidentLayout() {
           href: null,
           title: 'Pre-Approvals',
           headerShown: true,
-          headerRight: () => null, // header right injected by screen via useNavigation
+          headerRight: () => null,
         }}
       />
       <Tabs.Screen
@@ -74,6 +84,24 @@ export default function ResidentLayout() {
         options={{
           href: null,
           title: 'New Pre-Approval',
+          headerShown: true,
+        }}
+      />
+      {/* Pre-approval detail + QR display */}
+      <Tabs.Screen
+        name="pre-approvals/[id]"
+        options={{
+          href: null,
+          title: 'Pre-Approval Details',
+          headerShown: true,
+        }}
+      />
+      {/* Add / edit staff form */}
+      <Tabs.Screen
+        name="staff/add"
+        options={{
+          href: null,
+          title: 'Add Staff',
           headerShown: true,
         }}
       />
