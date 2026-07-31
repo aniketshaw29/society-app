@@ -478,6 +478,68 @@ export interface SosReportRow {
 }
 
 // ---------------------------------------------------------------------------
+// LocalVisitor — mirrors visitor_logs, stored in SQLite for offline guard
+// ---------------------------------------------------------------------------
+
+export type SyncStatus = 'pending' | 'synced' | 'error';
+
+export interface LocalVisitor {
+  /** Server UUID once synced; empty string until first sync */
+  id: string;
+  /** Locally generated UUID, stable across the lifetime of the record */
+  localId: string;
+  societyId: string;
+  flatId: string;
+  visitorName: string;
+  visitorPhone: string | null;
+  purpose: string;
+  vehicleNumber: string | null;
+  status: VisitorLogStatus;
+  photoLocalPath: string | null;
+  photoUrl: string | null;
+  entryTime: string;
+  exitTime: string | null;
+  syncStatus: SyncStatus;
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// SyncConflict — persisted locally for admin visibility
+// ---------------------------------------------------------------------------
+
+export type SyncConflictType = 'status_conflict' | 'exit_time_conflict';
+
+export interface SyncConflict {
+  id: number;
+  visitorLocalId: string | null;
+  conflictType: SyncConflictType;
+  localValue: string | null;
+  serverValue: string | null;
+  resolvedValue: string | null;
+  resolvedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// SyncQueueEntry — record stored in sync_queue table
+// ---------------------------------------------------------------------------
+
+export type SyncQueueStatus = 'pending' | 'success' | 'abandoned';
+
+export interface SyncQueueEntry {
+  id: number;
+  entityType: string;
+  operation: string;
+  payload: string;
+  createdAt: string;
+  attempts: number;
+  lastAttempt: string | null;
+  nextAttempt: string | null;
+  status: SyncQueueStatus;
+}
+
+// ---------------------------------------------------------------------------
 // API Response helpers
 // ---------------------------------------------------------------------------
 

@@ -139,8 +139,8 @@ const getStats: RequestHandler = async (req, res, next) => {
     days.forEach((d) => { countsByDay[d] = 0; });
 
     if (visitorLogsResult.data) {
-      for (const row of visitorLogsResult.data) {
-        const utcDate = new Date(row.created_at as string);
+      for (const row of visitorLogsResult.data as Array<Record<string, unknown>>) {
+        const utcDate = new Date(row['created_at'] as string);
         const istDate = new Date(utcDate.getTime() + IST_OFFSET_MS);
         const yyyy = istDate.getUTCFullYear();
         const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');

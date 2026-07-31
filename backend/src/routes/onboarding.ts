@@ -700,8 +700,6 @@ const deleteFlat: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const flatRow = existing as Record<string, unknown>;
-
     // 409 if flat has active residents
     const { count: residentCount } = await supabaseAdmin
       .from('user_profiles')

@@ -1,6 +1,6 @@
+import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
 // ============================================================
 // Types
 // ============================================================
@@ -42,7 +42,7 @@ export function KpiCard({ title, value, icon, color, loading = false }: KpiCardP
   return (
     <View style={styles.card}>
       <View style={[styles.iconWrapper, { backgroundColor: `${color}18` }]}>
-        <Ionicons name={icon as Parameters<typeof Ionicons>[0]['name']} size={22} color={color} />
+        <Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={22} color={color} />
       </View>
       <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
         {typeof value === 'number' ? value.toLocaleString() : value}

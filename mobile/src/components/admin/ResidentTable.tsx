@@ -17,8 +17,8 @@ interface ResidentTableRowProps {
 function initials(name: string | null): string {
   if (!name) return '?';
   const parts = name.trim().split(' ');
-  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? '?';
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  if (parts.length === 1) return (parts[0]?.[0] ?? '?').toUpperCase();
+  return `${parts[0]?.[0] ?? ''}${parts[parts.length - 1]?.[0] ?? ''}`.toUpperCase() || '?';
 }
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; text: string }> = {

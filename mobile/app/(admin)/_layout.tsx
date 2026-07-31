@@ -73,7 +73,7 @@ export default function AdminLayout() {
       {/* ── Onboarding screens (non-tab) ───────────────────── */}
       <Tabs.Screen
         name="onboarding/buildings"
-        options={{ href: null, title: 'Add Buildings', headerBackVisible: false }}
+        options={{ href: null, title: 'Add Buildings' }}
       />
       <Tabs.Screen
         name="onboarding/flats"
