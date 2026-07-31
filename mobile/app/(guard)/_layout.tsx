@@ -33,6 +33,16 @@ export default function GuardLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="notices"
+        options={{
+          title: 'Notices',
+          tabBarLabel: 'Notices',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="notifications-outline" size={size} color={color} />
+          ),
+        }}
+      />
       {/* Keep legacy index hidden from tabs but accessible for back-compat */}
       <Tabs.Screen
         name="index"

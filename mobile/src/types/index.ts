@@ -390,6 +390,94 @@ export interface UserProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Notice (T5-3)
+// ---------------------------------------------------------------------------
+
+export type NoticeType = 'general' | 'urgent' | 'event' | 'maintenance';
+export type NoticeStatus = 'draft' | 'published' | 'archived';
+
+export interface Notice {
+  id: string;
+  societyId: string;
+  createdBy: string;
+  title: string;
+  body: string;
+  /** 'all' | 'guards' | 'building:<uuid>' */
+  audience: string;
+  noticeType: NoticeType;
+  isPinned: boolean;
+  status: NoticeStatus;
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateNoticeInput {
+  title: string;
+  body: string;
+  audience: string;
+  noticeType: NoticeType;
+  isPinned?: boolean;
+  scheduledAt?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Admin Reports (T5-4)
+// ---------------------------------------------------------------------------
+
+export interface ReportFilters {
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string;   // YYYY-MM-DD
+  buildingId?: string;
+  guardId?: string;
+  flatId?: string;
+  staffCategory?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface VisitorReportRow {
+  id: string;
+  name: string;
+  phone: string | null;
+  purpose: string | null;
+  flat: string | null;
+  building: string | null;
+  guard: string | null;
+  status: string;
+  entryTime: string | null;
+  exitTime: string | null;
+  createdAt: string;
+}
+
+export interface StaffVisitReportRow {
+  id: string;
+  staffName: string | null;
+  staffCategory: string | null;
+  staffPhone: string | null;
+  flat: string | null;
+  building: string | null;
+  entryTime: string | null;
+  exitTime: string | null;
+  createdAt: string;
+}
+
+export interface SosReportRow {
+  id: string;
+  message: string | null;
+  status: string;
+  flat: string | null;
+  building: string | null;
+  residentName: string | null;
+  residentPhone: string | null;
+  resolvedAt: string | null;
+  resolutionMinutes: number | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // API Response helpers
 // ---------------------------------------------------------------------------
 

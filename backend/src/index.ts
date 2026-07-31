@@ -14,6 +14,7 @@ import flatsRouter from './routes/flats';
 import sosRouter from './routes/sos';
 import noticesRouter from './routes/notices';
 import adminReportsRouter from './routes/adminReports';
+import adminRouter from './routes/admin';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { checkScheduledNotices } from './services/noticeScheduler';
@@ -144,6 +145,9 @@ app.use('/notices', noticesRouter);
 
 // Admin reports: visitors, staff, SOS
 app.use('/admin/reports', adminReportsRouter);
+
+// Admin dashboard: stats, activity feed
+app.use('/admin', adminRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {
