@@ -12,22 +12,50 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAdminManagement, MgmtFlat, MgmtBuilding } from '@/hooks/useAdminManagement';
+import {
+  useAdminManagement,
+  type MgmtFlat,
+  type MgmtResident,
+} from '@/hooks/useAdminManagement';
 import { useAuthStore } from '@/stores/authStore';
+import { FlatForm, type FlatFormData, type FlatFormErrors } from '@/components/admin/FlatForm';
+import { FlatPicker, type FlatItem } from '@/components/FlatPicker';
+import api from '@/lib/api';
 
 // ============================================================
-// Types
+// Constants
 // ============================================================
 
-interface FlatForm {
-  flatNumber: string;
-  floor: string;
+const EMPTY_ADD_FORM: FlatFormData = { flatNumber: '', floor: '', buildingId: '' };
+const EMPTY_ADD_ERRORS: FlatFormErrors = {};
+
+// ============================================================
+// Helpers
+// ============================================================
+
+function extractApiMessage(err: unknown, fallback: string): string {
+  const e = err as {
+    response?: {
+      status?: number;
+      data?: { error?: { message?: string }; message?: string };
+    };
+  };
+  return (
+    e.response?.data?.error?.message ??
+    e.response?.data?.message ??
+    fallback
+  );
 }
 
-const EMPTY_FORM: FlatForm = { flatNumber: '', floor: '' };
+function roleLabel(role: string): string {
+  if (role === 'flat_owner') return 'Owner';
+  if (role === 'tenant') return 'Tenant';
+  return role;
+}
 
 // ============================================================
 // Screen
@@ -36,20 +64,49 @@ const EMPTY_FORM: FlatForm = { flatNumber: '', floor: '' };
 export default function FlatsScreen() {
   const societyId = useAuthStore((s) => s.societyId);
   const {
-    buildings, buildingsLoading, fetchBuildings,
+    buildings, fetchBuildings,
     flats, flatsLoading, fetchFlats, updateFlat, deleteFlat,
+    residents, residentsLoading, fetchResidents, updateResident,
     error, clearError,
   } = useAdminManagement();
 
+  // ── Filter state ──────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [filterBuildingId, setFilterBuildingId] = useState<string | null>(null);
   const [showBuildingPicker, setShowBuildingPicker] = useState(false);
 
-  const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FlatForm>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<Partial<FlatForm>>({});
-  const [submitting, setSubmitting] = useState(false);
+  // ── Pull-to-refresh ───────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ── Flat detail bottom sheet ──────────────────────────────
+  const [selectedFlat, setSelectedFlat] = useState<MgmtFlat | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+
+  // ── Reassign resident flat ────────────────────────────────
+  const [reassignTarget, setReassignTarget] = useState<MgmtResident | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignFlatId, setReassignFlatId] = useState<string | null>(null);
+  const [reassigning, setReassigning] = useState(false);
+  // All flats (unfiltered) for the picker
+  const [allFlats, setAllFlats] = useState<MgmtFlat[]>([]);
+  const [allFlatsLoading, setAllFlatsLoading] = useState(false);
+
+  // ── Add flat modal ────────────────────────────────────────
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState<FlatFormData>(EMPTY_ADD_FORM);
+  const [addErrors, setAddErrors] = useState<FlatFormErrors>(EMPTY_ADD_ERRORS);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+
+  // ── Edit flat modal ───────────────────────────────────────
+  const [editTarget, setEditTarget] = useState<MgmtFlat | null>(null);
+  const [editForm, setEditForm] = useState({ flatNumber: '', floor: '' });
+  const [editErrors, setEditErrors] = useState<{ flatNumber?: string; floor?: string }>({});
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // ── Toast (for 409 / delete errors) ──────────────────────
+  const [toast, setToast] = useState<string | null>(null);
+
+  // ── Boot ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (societyId) {
@@ -57,6 +114,24 @@ export default function FlatsScreen() {
       void fetchFlats(societyId);
     }
   }, [societyId, fetchBuildings, fetchFlats]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // ── Pull-to-refresh ───────────────────────────────────────
+
+  const onRefresh = useCallback(async () => {
+    if (!societyId) return;
+    setRefreshing(true);
+    await Promise.all([
+      fetchBuildings(societyId),
+      fetchFlats(societyId, filterBuildingId ?? undefined),
+    ]);
+    setRefreshing(false);
+  }, [societyId, fetchBuildings, fetchFlats, filterBuildingId]);
 
   // ── Filtering ─────────────────────────────────────────────
 
@@ -68,48 +143,144 @@ export default function FlatsScreen() {
 
   const selectedBuilding = buildings.find((b) => b.id === filterBuildingId);
 
-  // ── Validation ────────────────────────────────────────────
-
-  function validate(): boolean {
-    const errs: Partial<FlatForm> = {};
-    if (!form.flatNumber.trim()) errs.flatNumber = 'Flat number is required';
-    const floorNum = parseInt(form.floor, 10);
-    if (form.floor === '' || isNaN(floorNum) || floorNum < 0)
-      errs.floor = 'Enter a valid floor (0 or higher)';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
+  function buildingName(buildingId: string): string {
+    return buildings.find((b) => b.id === buildingId)?.name ?? '—';
   }
 
-  // ── Edit open ──────────────────────────────────────────────
+  // ── Flat detail ───────────────────────────────────────────
 
-  function openEdit(flat: MgmtFlat) {
-    setEditingId(flat.id);
-    setForm({ flatNumber: flat.flatNumber, floor: String(flat.floor) });
-    setFormErrors({});
-    setShowModal(true);
-  }
+  const handleFlatPress = useCallback(async (flat: MgmtFlat) => {
+    setSelectedFlat(flat);
+    setShowDetail(true);
+    if (societyId) {
+      await fetchResidents(societyId);
+    }
+  }, [societyId, fetchResidents]);
 
-  // ── Submit ────────────────────────────────────────────────
+  const flatResidents = residents.filter((r) => r.flatId === selectedFlat?.id);
 
-  const handleSubmit = async () => {
-    if (!validate() || !societyId || !editingId) return;
-    setSubmitting(true);
+  // ── Reassign ──────────────────────────────────────────────
+
+  const openReassign = useCallback(async (resident: MgmtResident) => {
+    setReassignTarget(resident);
+    setReassignFlatId(resident.flatId);
+    // Load all flats for picker
+    if (societyId) {
+      setAllFlatsLoading(true);
+      try {
+        const res = await api.get<{ flats: MgmtFlat[] }>(
+          `/onboarding/societies/${societyId}/flats`
+        );
+        setAllFlats(res.data.flats ?? []);
+      } catch {
+        // ignore – show what we have
+      } finally {
+        setAllFlatsLoading(false);
+      }
+    }
+    setShowReassign(true);
+  }, [societyId]);
+
+  const handleReassignConfirm = async () => {
+    if (!reassignTarget || !societyId || !reassignFlatId) return;
+    setReassigning(true);
     try {
-      await updateFlat(societyId, editingId, {
-        flatNumber: form.flatNumber.trim(),
-        floor: parseInt(form.floor, 10),
-      });
-      setShowModal(false);
+      await updateResident(societyId, reassignTarget.id, { flatId: reassignFlatId });
+      setShowReassign(false);
+      setReassignTarget(null);
+      await Promise.all([
+        fetchFlats(societyId, filterBuildingId ?? undefined),
+        fetchResidents(societyId),
+      ]);
     } catch {
       // error in hook
     } finally {
-      setSubmitting(false);
+      setReassigning(false);
+    }
+  };
+
+  const pickerItems: FlatItem[] = allFlats.map((f) => ({
+    id: f.id,
+    buildingId: f.buildingId,
+    buildingName: buildings.find((b) => b.id === f.buildingId)?.name,
+    flatNumber: f.flatNumber,
+    floor: f.floor,
+    isOccupied: f.isOccupied,
+  }));
+
+  // ── Add flat ──────────────────────────────────────────────
+
+  function validateAdd(): boolean {
+    const errs: FlatFormErrors = {};
+    if (!addForm.buildingId) errs.buildingId = 'Select a building';
+    if (!addForm.flatNumber.trim()) errs.flatNumber = 'Flat number is required';
+    const floorNum = parseInt(addForm.floor, 10);
+    if (addForm.floor === '' || isNaN(floorNum) || floorNum < 0)
+      errs.floor = 'Enter a valid floor (0 or higher)';
+    setAddErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  const handleAddSubmit = async () => {
+    if (!validateAdd() || !societyId) return;
+    setAddSubmitting(true);
+    try {
+      await api.post(`/onboarding/societies/${societyId}/flats`, {
+        buildingId: addForm.buildingId,
+        flatNumber: addForm.flatNumber.trim(),
+        floor: parseInt(addForm.floor, 10),
+      });
+      setShowAddModal(false);
+      setAddForm(EMPTY_ADD_FORM);
+      await fetchFlats(societyId, filterBuildingId ?? undefined);
+    } catch (err) {
+      setToast(extractApiMessage(err, 'Failed to add flat'));
+    } finally {
+      setAddSubmitting(false);
+    }
+  };
+
+  // ── Edit flat ─────────────────────────────────────────────
+
+  function openEdit(flat: MgmtFlat) {
+    setEditTarget(flat);
+    setEditForm({ flatNumber: flat.flatNumber, floor: String(flat.floor) });
+    setEditErrors({});
+  }
+
+  function validateEdit(): boolean {
+    const errs: { flatNumber?: string; floor?: string } = {};
+    if (!editForm.flatNumber.trim()) errs.flatNumber = 'Flat number is required';
+    const floorNum = parseInt(editForm.floor, 10);
+    if (editForm.floor === '' || isNaN(floorNum) || floorNum < 0)
+      errs.floor = 'Enter a valid floor (0 or higher)';
+    setEditErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  const handleEditSubmit = async () => {
+    if (!validateEdit() || !societyId || !editTarget) return;
+    setEditSubmitting(true);
+    try {
+      await updateFlat(societyId, editTarget.id, {
+        flatNumber: editForm.flatNumber.trim(),
+        floor: parseInt(editForm.floor, 10),
+      });
+      setEditTarget(null);
+    } catch {
+      // error in hook
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
   // ── Delete ────────────────────────────────────────────────
 
   const handleDelete = useCallback((flat: MgmtFlat) => {
+    if (flat.isOccupied) {
+      setToast('Cannot delete an occupied flat. Deactivate its residents first.');
+      return;
+    }
     Alert.alert(
       'Delete Flat',
       `Delete flat "${flat.flatNumber}"? This cannot be undone.`,
@@ -122,8 +293,13 @@ export default function FlatsScreen() {
             if (!societyId) return;
             try {
               await deleteFlat(societyId, flat.id);
-            } catch {
-              Alert.alert('Cannot Delete', 'This flat has active residents. Deactivate them first.');
+            } catch (err) {
+              const e = err as { response?: { status?: number } };
+              if (e.response?.status === 409) {
+                setToast('Cannot delete: flat still has active residents.');
+              } else {
+                setToast('Failed to delete flat.');
+              }
             }
           },
         },
@@ -131,36 +307,39 @@ export default function FlatsScreen() {
     );
   }, [societyId, deleteFlat]);
 
-  // ── Helpers ───────────────────────────────────────────────
-
-  function buildingName(buildingId: string): string {
-    return buildings.find((b) => b.id === buildingId)?.name ?? '—';
-  }
-
   // ── Render item ───────────────────────────────────────────
 
   const renderItem = ({ item }: { item: MgmtFlat }) => (
     <View style={styles.row}>
-      <View style={[styles.rowIcon, item.isOccupied ? styles.rowIconOccupied : styles.rowIconVacant]}>
-        <Ionicons
-          name={item.isOccupied ? 'home' : 'home-outline'}
-          size={18}
-          color={item.isOccupied ? '#1a73e8' : '#9CA3AF'}
-        />
-      </View>
-      <View style={styles.rowInfo}>
-        <View style={styles.rowNameRow}>
-          <Text style={styles.rowTitle}>Flat {item.flatNumber}</Text>
-          <View style={[styles.badge, item.isOccupied ? styles.badgeOccupied : styles.badgeVacant]}>
-            <Text style={[styles.badgeText, item.isOccupied ? styles.badgeTextOccupied : styles.badgeTextVacant]}>
-              {item.isOccupied ? 'Occupied' : 'Vacant'}
-            </Text>
-          </View>
+      {/* Tappable content area */}
+      <TouchableOpacity
+        style={styles.rowPressable}
+        onPress={() => handleFlatPress(item)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.rowIcon, item.isOccupied ? styles.rowIconOccupied : styles.rowIconVacant]}>
+          <Ionicons
+            name={item.isOccupied ? 'home' : 'home-outline'}
+            size={18}
+            color={item.isOccupied ? '#1a73e8' : '#9CA3AF'}
+          />
         </View>
-        <Text style={styles.rowMeta}>
-          Floor {item.floor} · {buildingName(item.buildingId)}
-        </Text>
-      </View>
+        <View style={styles.rowInfo}>
+          <View style={styles.rowNameRow}>
+            <Text style={styles.rowTitle}>Flat {item.flatNumber}</Text>
+            <View style={[styles.badge, item.isOccupied ? styles.badgeOccupied : styles.badgeVacant]}>
+              <Text style={[styles.badgeText, item.isOccupied ? styles.badgeTextOccupied : styles.badgeTextVacant]}>
+                {item.isOccupied ? 'Occupied' : 'Vacant'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.rowMeta}>
+            Floor {item.floor} · {buildingName(item.buildingId)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Action buttons outside tappable area */}
       <TouchableOpacity
         style={styles.actionBtn}
         onPress={() => openEdit(item)}
@@ -182,12 +361,21 @@ export default function FlatsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
+      {/* Error banner */}
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={clearError}>
             <Ionicons name="close" size={16} color="#DC2626" />
           </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Toast */}
+      {toast ? (
+        <View style={styles.toastBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color="#92400E" />
+          <Text style={styles.toastText} numberOfLines={2}>{toast}</Text>
         </View>
       ) : null}
 
@@ -218,7 +406,7 @@ export default function FlatsScreen() {
       </View>
 
       {/* List */}
-      {flatsLoading ? (
+      {flatsLoading && !refreshing ? (
         <View style={styles.center}>
           <ActivityIndicator color="#1a73e8" />
         </View>
@@ -236,15 +424,31 @@ export default function FlatsScreen() {
               <Text style={styles.emptyHint}>
                 {search || filterBuildingId
                   ? 'No flats match your filters.'
-                  : 'Add flats via the onboarding flow.'}
+                  : 'Tap + to add a flat.'}
               </Text>
             </View>
           }
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1a73e8" />
+          }
         />
       )}
 
-      {/* Building picker modal */}
+      {/* FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          setAddForm({ ...EMPTY_ADD_FORM, buildingId: filterBuildingId ?? '' });
+          setAddErrors(EMPTY_ADD_ERRORS);
+          setShowAddModal(true);
+        }}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={26} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* ── Building picker ──────────────────────────────────── */}
       <Modal
         visible={showBuildingPicker}
         transparent
@@ -256,7 +460,11 @@ export default function FlatsScreen() {
             <Text style={styles.pickerTitle}>Filter by Building</Text>
             <TouchableOpacity
               style={[styles.pickerOption, !filterBuildingId && styles.pickerOptionSelected]}
-              onPress={() => { setFilterBuildingId(null); setShowBuildingPicker(false); }}
+              onPress={() => {
+                setFilterBuildingId(null);
+                setShowBuildingPicker(false);
+                if (societyId) void fetchFlats(societyId);
+              }}
             >
               <Text style={styles.pickerOptionText}>All Buildings</Text>
               {!filterBuildingId && <Ionicons name="checkmark" size={18} color="#1a73e8" />}
@@ -265,7 +473,11 @@ export default function FlatsScreen() {
               <TouchableOpacity
                 key={b.id}
                 style={[styles.pickerOption, filterBuildingId === b.id && styles.pickerOptionSelected]}
-                onPress={() => { setFilterBuildingId(b.id); setShowBuildingPicker(false); }}
+                onPress={() => {
+                  setFilterBuildingId(b.id);
+                  setShowBuildingPicker(false);
+                  if (societyId) void fetchFlats(societyId, b.id);
+                }}
               >
                 <Text style={styles.pickerOptionText}>{b.name}</Text>
                 {filterBuildingId === b.id && <Ionicons name="checkmark" size={18} color="#1a73e8" />}
@@ -278,8 +490,182 @@ export default function FlatsScreen() {
         </View>
       </Modal>
 
-      {/* Edit Flat Modal */}
-      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
+      {/* ── Flat detail bottom sheet ─────────────────────────── */}
+      <Modal
+        visible={showDetail && !!selectedFlat}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDetail(false)}
+      >
+        <View style={styles.sheetBackdrop}>
+          <SafeAreaView style={styles.detailSheet} edges={['bottom']}>
+            <View style={styles.sheetHandle} />
+
+            {/* Header */}
+            <View style={styles.detailHeader}>
+              <View style={[styles.detailIcon, selectedFlat?.isOccupied ? styles.detailIconOccupied : styles.detailIconVacant]}>
+                <Ionicons
+                  name={selectedFlat?.isOccupied ? 'home' : 'home-outline'}
+                  size={22}
+                  color={selectedFlat?.isOccupied ? '#1a73e8' : '#9CA3AF'}
+                />
+              </View>
+              <View style={styles.detailInfo}>
+                <Text style={styles.detailTitle}>Flat {selectedFlat?.flatNumber}</Text>
+                <Text style={styles.detailSub}>
+                  Floor {selectedFlat?.floor}
+                  {selectedFlat ? ` · ${buildingName(selectedFlat.buildingId)}` : ''}
+                </Text>
+              </View>
+              <View style={[styles.badge, selectedFlat?.isOccupied ? styles.badgeOccupied : styles.badgeVacant]}>
+                <Text style={[styles.badgeText, selectedFlat?.isOccupied ? styles.badgeTextOccupied : styles.badgeTextVacant]}>
+                  {selectedFlat?.isOccupied ? 'Occupied' : 'Vacant'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDetail(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Residents */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>
+                Residents{flatResidents.length > 0 ? ` (${flatResidents.length})` : ''}
+              </Text>
+              {residentsLoading ? (
+                <View style={styles.detailLoading}>
+                  <ActivityIndicator color="#1a73e8" size="small" />
+                </View>
+              ) : flatResidents.length === 0 ? (
+                <Text style={styles.detailEmptyText}>No residents in this flat.</Text>
+              ) : (
+                flatResidents.map((r) => (
+                  <View key={r.id} style={styles.residentRow}>
+                    <View style={styles.residentAvatar}>
+                      <Text style={styles.residentAvatarText}>
+                        {r.fullName?.charAt(0)?.toUpperCase() ?? '?'}
+                      </Text>
+                    </View>
+                    <View style={styles.residentInfo}>
+                      <Text style={styles.residentName}>{r.fullName ?? 'Unknown'}</Text>
+                      <Text style={styles.residentRole}>{roleLabel(r.role)}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.reassignBtn}
+                      onPress={() => openReassign(r)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.reassignBtnText}>Reassign</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* ── Reassign flat modal ──────────────────────────────── */}
+      <Modal
+        visible={showReassign && !!reassignTarget}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowReassign(false)}
+      >
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Reassign Flat</Text>
+            <TouchableOpacity onPress={() => setShowReassign(false)}>
+              <Text style={styles.modalClose}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.reassignBody}>
+            <Text style={styles.reassignHint}>
+              Move{' '}
+              <Text style={styles.reassignName}>{reassignTarget?.fullName ?? 'resident'}</Text>
+              {' '}to a new flat:
+            </Text>
+            {allFlatsLoading ? (
+              <View style={styles.center}>
+                <ActivityIndicator color="#1a73e8" />
+              </View>
+            ) : (
+              <View style={styles.pickerContainer}>
+                <FlatPicker
+                  flats={pickerItems}
+                  selectedId={reassignFlatId}
+                  onSelect={(f) => setReassignFlatId(f.id)}
+                />
+              </View>
+            )}
+            <TouchableOpacity
+              style={[
+                styles.submitBtn,
+                (!reassignFlatId || reassigning) && styles.submitBtnDisabled,
+              ]}
+              onPress={handleReassignConfirm}
+              disabled={!reassignFlatId || reassigning}
+              activeOpacity={0.85}
+            >
+              {reassigning ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.submitBtnText}>Confirm Reassign</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Add flat modal ───────────────────────────────────── */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <SafeAreaView style={styles.modalSafe}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Flat</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                <Text style={styles.modalClose}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalBody}
+              keyboardShouldPersistTaps="handled"
+            >
+              <FlatForm
+                data={addForm}
+                errors={addErrors}
+                onChange={(field, value) => {
+                  setAddForm((p) => ({ ...p, [field]: value }));
+                  setAddErrors((p) => ({ ...p, [field]: undefined }));
+                }}
+                buildings={buildings.map((b) => ({ id: b.id, name: b.name }))}
+                onSubmit={handleAddSubmit}
+                loading={addSubmitting}
+                submitLabel="Add Flat"
+              />
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Edit flat modal ──────────────────────────────────── */}
+      <Modal
+        visible={!!editTarget}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditTarget(null)}
+      >
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -287,41 +673,50 @@ export default function FlatsScreen() {
           <SafeAreaView style={styles.modalSafe}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Flat</Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
+              <TouchableOpacity onPress={() => setEditTarget(null)}>
                 <Text style={styles.modalClose}>Cancel</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              contentContainerStyle={styles.modalBody}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.fieldLabel}>Flat Number</Text>
               <TextInput
-                style={[styles.fieldInput, formErrors.flatNumber ? styles.fieldInputError : null]}
+                style={[styles.fieldInput, editErrors.flatNumber ? styles.fieldInputError : null]}
                 placeholder="e.g. 101, A-201"
                 placeholderTextColor="#9CA3AF"
-                value={form.flatNumber}
-                onChangeText={(v) => { setForm((p) => ({ ...p, flatNumber: v })); setFormErrors((p) => ({ ...p, flatNumber: undefined })); }}
+                value={editForm.flatNumber}
+                onChangeText={(v) => {
+                  setEditForm((p) => ({ ...p, flatNumber: v }));
+                  setEditErrors((p) => ({ ...p, flatNumber: undefined }));
+                }}
                 returnKeyType="next"
               />
-              {formErrors.flatNumber ? <Text style={styles.fieldError}>{formErrors.flatNumber}</Text> : null}
+              {editErrors.flatNumber ? <Text style={styles.fieldError}>{editErrors.flatNumber}</Text> : null}
 
               <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Floor</Text>
               <TextInput
-                style={[styles.fieldInput, formErrors.floor ? styles.fieldInputError : null]}
+                style={[styles.fieldInput, editErrors.floor ? styles.fieldInputError : null]}
                 placeholder="e.g. 0 (ground), 1, 2..."
                 placeholderTextColor="#9CA3AF"
-                value={form.floor}
-                onChangeText={(v) => { setForm((p) => ({ ...p, floor: v.replace(/\D/g, '') })); setFormErrors((p) => ({ ...p, floor: undefined })); }}
+                value={editForm.floor}
+                onChangeText={(v) => {
+                  setEditForm((p) => ({ ...p, floor: v.replace(/\D/g, '') }));
+                  setEditErrors((p) => ({ ...p, floor: undefined }));
+                }}
                 keyboardType="number-pad"
                 returnKeyType="done"
               />
-              {formErrors.floor ? <Text style={styles.fieldError}>{formErrors.floor}</Text> : null}
+              {editErrors.floor ? <Text style={styles.fieldError}>{editErrors.floor}</Text> : null}
 
               <TouchableOpacity
-                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-                onPress={handleSubmit}
-                disabled={submitting}
+                style={[styles.submitBtn, editSubmitting && styles.submitBtnDisabled]}
+                onPress={handleEditSubmit}
+                disabled={editSubmitting}
                 activeOpacity={0.85}
               >
-                {submitting ? (
+                {editSubmitting ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <Text style={styles.submitBtnText}>Save Changes</Text>
@@ -345,64 +740,50 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2', paddingHorizontal: 16, paddingVertical: 10, gap: 8,
   },
   errorText: { color: '#DC2626', fontSize: 13, flex: 1 },
 
+  toastBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFFBEB', paddingHorizontal: 16, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#FDE68A',
+  },
+  toastText: { color: '#92400E', fontSize: 13, flex: 1 },
+
   filterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginHorizontal: 12,
-    marginTop: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginHorizontal: 12, marginTop: 12,
+    backgroundColor: '#FFFFFF', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: '#E5E7EB',
   },
   filterBtnText: { flex: 1, fontSize: 14, color: '#374151', fontWeight: '500' },
 
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    margin: 12,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 8,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FFFFFF', margin: 12, borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    borderWidth: 1, borderColor: '#E5E7EB', gap: 8,
   },
   searchInput: { flex: 1, fontSize: 15, color: '#111827' },
 
   listContent: { paddingHorizontal: 12, paddingBottom: 100 },
+  separator: { height: 8 },
 
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 10,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FFFFFF', borderRadius: 12,
+    borderWidth: 1, borderColor: '#E5E7EB', gap: 10,
+    overflow: 'hidden',
+  },
+  rowPressable: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12,
   },
   rowIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    width: 38, height: 38, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   rowIconOccupied: { backgroundColor: '#EFF6FF' },
   rowIconVacant: { backgroundColor: '#F3F4F6' },
@@ -410,34 +791,110 @@ const styles = StyleSheet.create({
   rowNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   rowTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
   rowMeta: { fontSize: 12, color: '#6B7280' },
+
   badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
   badgeOccupied: { backgroundColor: '#DBEAFE' },
   badgeVacant: { backgroundColor: '#F3F4F6' },
   badgeText: { fontSize: 11, fontWeight: '600' },
   badgeTextOccupied: { color: '#1E40AF' },
   badgeTextVacant: { color: '#6B7280' },
+
   actionBtn: {
-    width: 34, height: 34, borderRadius: 8,
-    backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  actionBtnDanger: { backgroundColor: '#FEF2F2' },
-  separator: { height: 8 },
+  actionBtnDanger: {},
 
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#374151' },
   emptyHint: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingHorizontal: 24 },
 
-  // Building picker
+  fab: {
+    position: 'absolute', bottom: 24, right: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#1a73e8', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#1a73e8', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+  },
+
+  // Picker modal
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  pickerSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40, paddingTop: 20 },
-  pickerTitle: { fontSize: 16, fontWeight: '700', color: '#111827', textAlign: 'center', paddingHorizontal: 20, marginBottom: 12 },
-  pickerOption: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#F3F4F6' },
+  pickerSheet: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingBottom: 40, paddingTop: 20,
+  },
+  pickerTitle: {
+    fontSize: 16, fontWeight: '700', color: '#111827',
+    textAlign: 'center', paddingHorizontal: 20, marginBottom: 12,
+  },
+  pickerOption: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#F3F4F6',
+  },
   pickerOptionSelected: { backgroundColor: '#EFF6FF' },
   pickerOptionText: { flex: 1, fontSize: 15, color: '#111827' },
-  pickerClose: { marginTop: 8, marginHorizontal: 20, paddingVertical: 14, backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center' },
+  pickerClose: {
+    marginTop: 8, marginHorizontal: 20, paddingVertical: 14,
+    backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center',
+  },
   pickerCloseText: { fontSize: 15, fontWeight: '600', color: '#374151' },
 
-  // Modal
+  // Flat detail sheet
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  detailSheet: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 10,
+  },
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB',
+    alignSelf: 'center', marginBottom: 16,
+  },
+  detailHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB',
+    gap: 10,
+  },
+  detailIcon: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  detailIconOccupied: { backgroundColor: '#EFF6FF' },
+  detailIconVacant: { backgroundColor: '#F3F4F6' },
+  detailInfo: { flex: 1 },
+  detailTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 2 },
+  detailSub: { fontSize: 13, color: '#6B7280' },
+  detailSection: { paddingHorizontal: 20, paddingVertical: 16 },
+  detailSectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 12 },
+  detailLoading: { paddingVertical: 20, alignItems: 'center' },
+  detailEmptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', paddingVertical: 12 },
+
+  residentRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, gap: 10,
+  },
+  residentAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
+  },
+  residentAvatarText: { fontSize: 13, fontWeight: '700', color: '#1a73e8' },
+  residentInfo: { flex: 1 },
+  residentName: { fontSize: 14, fontWeight: '600', color: '#111827', marginBottom: 2 },
+  residentRole: { fontSize: 12, color: '#6B7280' },
+  reassignBtn: {
+    backgroundColor: '#EFF6FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  reassignBtnText: { fontSize: 12, fontWeight: '600', color: '#1a73e8' },
+
+  // Reassign modal
+  reassignBody: { flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
+  reassignHint: { fontSize: 14, color: '#6B7280', marginBottom: 12 },
+  reassignName: { fontWeight: '700', color: '#111827' },
+  pickerContainer: { flex: 1, marginBottom: 16 },
+
+  // Shared modal styles
   modalSafe: { flex: 1, backgroundColor: '#FFFFFF' },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -447,6 +904,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
   modalClose: { fontSize: 16, color: '#1a73e8', fontWeight: '600' },
   modalBody: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
+
   fieldLabel: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 6 },
   fieldInput: {
     borderWidth: 1.5, borderColor: '#D1D5DB', borderRadius: 10,
@@ -455,9 +913,10 @@ const styles = StyleSheet.create({
   },
   fieldInputError: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
   fieldError: { fontSize: 12, color: '#EF4444', marginTop: 4 },
+
   submitBtn: {
     backgroundColor: '#1a73e8', borderRadius: 12,
-    paddingVertical: 15, alignItems: 'center', marginTop: 24,
+    paddingVertical: 15, alignItems: 'center', marginTop: 16,
   },
   submitBtnDisabled: { backgroundColor: '#93C5FD' },
   submitBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },

@@ -15,10 +15,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/stores/authStore';
-import { useRealtimeVisitors } from '@/hooks/useRealtimeVisitors';
+import { useLocalVisitors } from '@/hooks/useLocalVisitors';
 import { VisitorCard } from '@/components/guard/VisitorCard';
+import { SyncStatusBar } from '@/components/guard/SyncStatusBar';
+import { isOnline } from '@/services/networkMonitor';
+import {
+  enqueueVisitorInsert,
+  processQueue,
+} from '@/services/syncService';
+import { insertLocalVisitor } from '@/lib/db/visitors';
 import api from '@/lib/api';
-import type { VisitorLog, StaffSearchResult } from '@/types';
+import type { LocalVisitor, VisitorLog, StaffSearchResult } from '@/types';
+import 'react-native-get-random-values'; // required for crypto.randomUUID in RN
 
 // ---------------------------------------------------------------------------
 // Gate screen — guards see live visitor feed + entry action buttons
@@ -26,15 +34,15 @@ import type { VisitorLog, StaffSearchResult } from '@/types';
 
 export default function GateScreen() {
   const societyId = useAuthStore((s) => s.societyId) ?? '';
-  const { visitors, isConnected, error, refresh } = useRealtimeVisitors(societyId);
+  const { visitors, loading, refresh, subscribeToStatusUpdates } = useLocalVisitors(societyId);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Track which visitor ids were just updated for flash animation
+  // Track which visitor localIds were just updated for flash animation
   const [justUpdatedIds, setJustUpdatedIds] = useState<Set<string>>(new Set());
-  const prevVisitorsRef = useRef<VisitorLog[]>([]);
+  const prevVisitorsRef = useRef<LocalVisitor[]>([]);
 
   // Approved banner: first approved visitor that hasn't been dismissed
-  const [approvedBannerVisitor, setApprovedBannerVisitor] = useState<VisitorLog | null>(null);
+  const [approvedBannerVisitor, setApprovedBannerVisitor] = useState<LocalVisitor | null>(null);
   const bannerAnim = useRef(new Animated.Value(-100)).current;
 
   // Staff search state
@@ -44,8 +52,14 @@ export default function GateScreen() {
   const [staffEntryLoading, setStaffEntryLoading] = useState<string | null>(null);
   const staffSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Subscribe to Supabase Realtime for status updates (resident approvals)
+  useEffect(() => {
+    const unsubscribe = subscribeToStatusUpdates();
+    return unsubscribe;
+  }, [subscribeToStatusUpdates]);
+
   // -------------------------------------------------------------------------
-  // Detect status changes on UPDATE to trigger haptics + flash
+  // Detect status changes to trigger haptics + flash
   // -------------------------------------------------------------------------
 
   useEffect(() => {
@@ -58,12 +72,12 @@ export default function GateScreen() {
     const updatedIds = new Set<string>();
     let hasApprovedChange = false;
     let hasDeniedChange = false;
-    let newlyApproved: VisitorLog | null = null;
+    let newlyApproved: LocalVisitor | null = null;
 
     for (const current of visitors) {
-      const previous = prev.find((v) => v.id === current.id);
+      const previous = prev.find((v) => v.localId === current.localId);
       if (previous && previous.status !== current.status) {
-        updatedIds.add(current.id);
+        updatedIds.add(current.localId);
         if (current.status === 'approved') {
           hasApprovedChange = true;
           newlyApproved = current;
@@ -75,7 +89,6 @@ export default function GateScreen() {
 
     if (updatedIds.size > 0) {
       setJustUpdatedIds(updatedIds);
-      // Clear flash indicators after animation completes
       const timer = setTimeout(() => setJustUpdatedIds(new Set()), 1000);
 
       if (hasApprovedChange) {
@@ -97,7 +110,7 @@ export default function GateScreen() {
   // Approved banner animation
   // -------------------------------------------------------------------------
 
-  const showApprovedBanner = (visitor: VisitorLog) => {
+  const showApprovedBanner = (visitor: LocalVisitor) => {
     setApprovedBannerVisitor(visitor);
     Animated.spring(bannerAnim, {
       toValue: 0,
@@ -126,21 +139,25 @@ export default function GateScreen() {
   }, [refresh]);
 
   // -------------------------------------------------------------------------
-  // Guard actions — visitor
+  // Guard actions — visitor (offline-safe)
   // -------------------------------------------------------------------------
 
-  const handleMarkEntered = useCallback(async (visitor: VisitorLog) => {
+  const handleMarkEntered = useCallback(async (visitor: LocalVisitor) => {
     try {
-      await api.patch(`/visitors/${visitor.id}/enter`);
-      // Real-time subscription will reflect the change; no manual state update needed
+      if (visitor.id) {
+        await api.patch(`/visitors/${visitor.id}/enter`);
+      }
+      // Realtime will update local state; for offline case, update will queue on reconnect
     } catch {
       Alert.alert('Error', 'Could not mark as entered. Please try again.');
     }
   }, []);
 
-  const handleMarkExited = useCallback(async (visitor: VisitorLog) => {
+  const handleMarkExited = useCallback(async (visitor: LocalVisitor) => {
     try {
-      await api.patch(`/visitors/${visitor.id}/exit`);
+      if (visitor.id) {
+        await api.patch(`/visitors/${visitor.id}/exit`);
+      }
     } catch {
       Alert.alert('Error', 'Could not mark as exited. Please try again.');
     }
@@ -219,6 +236,30 @@ export default function GateScreen() {
   }, []);
 
   // -------------------------------------------------------------------------
+  // Adapter: LocalVisitor → VisitorLog for VisitorCard
+  // -------------------------------------------------------------------------
+
+  const toVisitorLog = (v: LocalVisitor): VisitorLog => ({
+    id: v.id || v.localId,
+    societyId: v.societyId,
+    flatId: v.flatId,
+    guardId: null,
+    visitorName: v.visitorName,
+    visitorPhone: v.visitorPhone,
+    visitorPhotoUrl: v.photoUrl,
+    vehicleNumber: v.vehicleNumber,
+    purpose: v.purpose,
+    entryMethod: 'manual',
+    status: v.status,
+    approvedBy: null,
+    approvedAt: null,
+    entryTime: v.entryTime,
+    exitTime: v.exitTime,
+    createdAt: v.createdAt,
+    updatedAt: v.updatedAt,
+  });
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -239,15 +280,6 @@ export default function GateScreen() {
             <Text style={styles.bannerDismissText}>Dismiss</Text>
           </TouchableOpacity>
         </Animated.View>
-      )}
-
-      {/* Connection indicator */}
-      {!isConnected && (
-        <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>
-            {error ?? 'Reconnecting to live updates…'}
-          </Text>
-        </View>
       )}
 
       {/* Action buttons row: Log Visitor | Scan QR | OTP Entry */}
@@ -354,12 +386,16 @@ export default function GateScreen() {
       {/* Visitor list */}
       <FlatList
         data={visitors}
-        keyExtractor={(v) => v.id}
+        keyExtractor={(v) => v.localId}
         renderItem={({ item }) => (
           <VisitorCard
-            visitor={item}
-            justUpdated={justUpdatedIds.has(item.id)}
-            onPress={() => router.push(`/(guard)/visitor-detail/${item.id}`)}
+            visitor={toVisitorLog(item)}
+            justUpdated={justUpdatedIds.has(item.localId)}
+            onPress={() =>
+              item.id
+                ? router.push(`/(guard)/visitor-detail/${item.id}`)
+                : undefined
+            }
             onMarkEntered={
               item.status === 'approved' ? () => handleMarkEntered(item) : undefined
             }
@@ -370,7 +406,7 @@ export default function GateScreen() {
         )}
         contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing || loading} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -378,6 +414,9 @@ export default function GateScreen() {
           </View>
         }
       />
+
+      {/* Sync status bar — pinned at the very bottom */}
+      <SyncStatusBar />
     </SafeAreaView>
   );
 }
@@ -430,16 +469,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
-  },
-  offlineBanner: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  offlineText: {
-    color: '#92400E',
-    fontSize: 13,
-    textAlign: 'center',
   },
 
   // Action buttons row
