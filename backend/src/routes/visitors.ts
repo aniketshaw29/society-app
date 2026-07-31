@@ -749,6 +749,7 @@ const historyQuerySchema = z.object({
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   flatId: z.string().uuid().optional(),
+  search: z.string().max(100).optional(),
 });
 
 const getVisitorHistory: RequestHandler = async (req, res, next) => {
@@ -766,7 +767,7 @@ const getVisitorHistory: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const { page, limit, status, fromDate, toDate, flatId } = parsed.data;
+    const { page, limit, status, fromDate, toDate, flatId, search } = parsed.data;
     const offset = (page - 1) * limit;
     const societyId = user.society_id;
 
@@ -804,6 +805,10 @@ const getVisitorHistory: RequestHandler = async (req, res, next) => {
     if (status) dbQuery = dbQuery.eq('status', status);
     if (fromDate) dbQuery = dbQuery.gte('created_at', `${fromDate}T00:00:00Z`);
     if (toDate) dbQuery = dbQuery.lte('created_at', `${toDate}T23:59:59Z`);
+    // Search by visitor name (case-insensitive prefix/contains match)
+    if (search && search.trim()) {
+      dbQuery = dbQuery.ilike('visitor_name', `%${search.trim()}%`);
+    }
 
     const { data, error, count } = await dbQuery;
     if (error) throw new AppError(500, 'FETCH_FAILED', error.message);

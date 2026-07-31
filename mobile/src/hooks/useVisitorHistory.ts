@@ -93,6 +93,9 @@ function buildQueryParams(
   if (filters.fromDate) params.set('fromDate', filters.fromDate);
   if (filters.toDate) params.set('toDate', filters.toDate);
   if (filters.flatId) params.set('flatId', filters.flatId);
+  if (filters.search && filters.search.trim()) {
+    params.set('search', filters.search.trim());
+  }
 
   // Expand date range shortcuts to concrete fromDate/toDate
   if (filters.dateRange && !filters.fromDate) {

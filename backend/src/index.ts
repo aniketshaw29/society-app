@@ -10,9 +10,13 @@ import onboardingRouter from './routes/onboarding';
 import visitorsRouter from './routes/visitors';
 import preApprovalsRouter from './routes/preApprovals';
 import recurringStaffRouter from './routes/recurringStaff';
+import flatsRouter from './routes/flats';
 import sosRouter from './routes/sos';
+import noticesRouter from './routes/notices';
+import adminReportsRouter from './routes/adminReports';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { checkScheduledNotices } from './services/noticeScheduler';
 
 // ============================================================
 // Validate environment variables before anything else
@@ -129,8 +133,17 @@ app.use('/pre-approvals', preApprovalsRouter);
 // Recurring staff management: residents manage daily staff, guards log entries
 app.use('/recurring-staff', recurringStaffRouter);
 
+// Flat member management: list/add/remove members from a flat
+app.use('/flats', flatsRouter);
+
 // SOS alerts: residents trigger emergency, guards/admins resolve
 app.use('/sos', sosRouter);
+
+// Notices and announcements
+app.use('/notices', noticesRouter);
+
+// Admin reports: visitors, staff, SOS
+app.use('/admin/reports', adminReportsRouter);
 
 // Authenticated example — exposes auth middleware for use in tests
 app.get('/api/v1/me', authenticate, (req, res) => {
@@ -152,6 +165,12 @@ const server = app.listen(PORT, () => {
   console.log(
     `[Server] Society App Backend running on port ${PORT} (${config.NODE_ENV})`
   );
+
+  // Start scheduled notice processor (every 60 seconds)
+  setInterval(() => {
+    void checkScheduledNotices();
+  }, 60_000);
+  console.log('[Server] Notice scheduler started (60s interval)');
 });
 
 // Graceful shutdown

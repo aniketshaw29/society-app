@@ -1,47 +1,56 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useVisitorHistory } from '@/hooks/useVisitorHistory';
 import { VisitorHistoryItem } from '@/components/resident/VisitorHistoryItem';
-import type { HistoryFilters, VisitorLogStatus } from '@/types';
+import VisitorHistoryFilters from '@/components/resident/VisitorHistoryFilters';
+import type { HistoryFilters } from '@/types';
 
-type StatusChip = VisitorLogStatus | '';
-
-const STATUS_CHIPS: { key: StatusChip; label: string }[] = [
-  { key: '', label: 'All' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'denied', label: 'Denied' },
-  { key: 'entered', label: 'Entered' },
-  { key: 'exited', label: 'Exited' },
-];
+const DEFAULT_FILTERS: HistoryFilters = {
+  status: '',
+  limit: 20,
+};
 
 export default function ResidentVisitorsScreen() {
-  const [statusFilter, setStatusFilter] = useState<StatusChip>('');
+  const router = useRouter();
+
+  const [filters, setFilters] = useState<HistoryFilters>(DEFAULT_FILTERS);
   const { visitors, loading, hasMore, total, fetchPage, loadMore } =
     useVisitorHistory('resident');
 
+  // Use a ref to track whether we're doing initial load
+  const initialLoadDone = useRef(false);
+
   const applyFilters = useCallback(
-    (status: StatusChip) => {
-      const filters: HistoryFilters = {
-        status: status,
-        limit: 20,
-      };
-      fetchPage(1, filters).catch(() => null);
+    (f: HistoryFilters) => {
+      fetchPage(1, { ...f, limit: 20 }).catch(() => null);
     },
     [fetchPage]
   );
 
+  // Initial load
   useEffect(() => {
-    applyFilters(statusFilter);
-  }, [statusFilter, applyFilters]);
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      applyFilters(DEFAULT_FILTERS);
+    }
+  }, [applyFilters]);
+
+  // Re-fetch when filters change (after initial load)
+  const handleFiltersChange = useCallback(
+    (f: HistoryFilters) => {
+      setFilters(f);
+      applyFilters(f);
+    },
+    [applyFilters]
+  );
 
   const handleLoadMore = useCallback(() => {
     if (!loading && hasMore) {
@@ -59,30 +68,8 @@ export default function ResidentVisitorsScreen() {
         </Text>
       </View>
 
-      {/* Status filter chips */}
-      <FlatList
-        horizontal
-        data={STATUS_CHIPS}
-        keyExtractor={(c) => c.key}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipsContainer}
-        renderItem={({ item: chip }) => (
-          <TouchableOpacity
-            style={[styles.chip, statusFilter === chip.key && styles.chipActive]}
-            onPress={() => setStatusFilter(chip.key)}
-            testID={`status-chip-${chip.key || 'all'}`}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                statusFilter === chip.key && styles.chipTextActive,
-              ]}
-            >
-              {chip.label}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Filter bar (search + date range + status chips) */}
+      <VisitorHistoryFilters filters={filters} onChange={handleFiltersChange} />
 
       {/* Visitor list */}
       <FlatList
@@ -91,22 +78,33 @@ export default function ResidentVisitorsScreen() {
         renderItem={({ item }) => (
           <VisitorHistoryItem
             visitor={item}
-            onPress={() => router.push(`/(guard)/visitor-detail/${item.id}`)}
+            onPress={() =>
+              router.push(`/(resident)/approve/${item.id}` as never)
+            }
           />
         )}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.3}
+        contentContainerStyle={styles.listContent}
         ListFooterComponent={
           loading ? (
             <ActivityIndicator style={styles.loader} color="#1a73e8" />
+          ) : hasMore ? null : visitors.length > 0 ? (
+            <Text style={styles.endText}>All caught up</Text>
           ) : null
         }
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No visitors yet</Text>
+              <Text style={styles.emptyText}>
+                {filters.search || filters.status || filters.dateRange
+                  ? 'No visitors match your filters'
+                  : 'No visitors yet'}
+              </Text>
               <Text style={styles.emptyHint}>
-                Visitors will appear here once your guard logs them.
+                {filters.search || filters.status || filters.dateRange
+                  ? 'Try adjusting the search or filters above.'
+                  : 'Visitors will appear here once your guard logs them.'}
               </Text>
             </View>
           ) : null
@@ -125,6 +123,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   title: {
     fontSize: 22,
@@ -136,31 +137,18 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 2,
   },
-  chipsContainer: {
+  listContent: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 99,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-  },
-  chipActive: {
-    backgroundColor: '#1a73e8',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    paddingTop: 8,
+    paddingBottom: 32,
   },
   loader: {
+    paddingVertical: 16,
+  },
+  endText: {
+    fontSize: 12,
+    color: '#D1D5DB',
+    textAlign: 'center',
     paddingVertical: 16,
   },
   empty: {
@@ -178,5 +166,6 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     marginTop: 8,
     textAlign: 'center',
+    lineHeight: 20,
   },
 });
