@@ -154,8 +154,8 @@ describe('getActiveLocalVisitors', () => {
 
     const result = await getActiveLocalVisitors('society-1');
     expect(result).toHaveLength(1);
-    expect(result[0].visitorName).toBe('Jane');
-    expect(result[0].localId).toBe(LOCAL_ID);
+    expect(result[0]!.visitorName).toBe('Jane');
+    expect(result[0]!.localId).toBe(LOCAL_ID);
   });
 });
 

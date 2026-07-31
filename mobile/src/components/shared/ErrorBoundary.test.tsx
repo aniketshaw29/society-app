@@ -80,16 +80,16 @@ describe('ErrorBoundary', () => {
     // Boundary has caught the error
     expect(getByText('Something went wrong')).toBeTruthy();
 
-    // Tap "Try Again"
-    const tryAgainButton = getByText('Try Again');
-    fireEvent.press(tryAgainButton);
-
-    // After reset we need a non-throwing child — re-render with fixed child
+    // Swap to non-throwing child first so reset doesn't immediately re-throw
     rerender(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={false} />
       </ErrorBoundary>
     );
+
+    // Now tap "Try Again" — state resets and non-throwing child renders
+    const tryAgainButton = getByTestId('try-again-button');
+    fireEvent.press(tryAgainButton);
 
     expect(getByTestId('child')).toBeTruthy();
     expect(queryByTestId('error-fallback')).toBeNull();

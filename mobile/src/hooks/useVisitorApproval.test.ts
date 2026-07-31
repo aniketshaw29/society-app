@@ -21,7 +21,7 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 import { renderHook, act } from '@testing-library/react-native';
-import { useVisitorApproval, type VisitorLog } from '../useVisitorApproval';
+import { useVisitorApproval, type VisitorLog } from './useVisitorApproval';
 import api from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
@@ -70,7 +70,7 @@ function mockSupabaseSelect(rows: unknown[]) {
   const chain = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
+    order: jest.fn().mockResolvedValue({ data: rows, error: null }),
     limit: jest.fn().mockResolvedValue({ data: rows, error: null }),
   };
   (supabase.from as jest.Mock).mockReturnValue(chain);

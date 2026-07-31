@@ -74,6 +74,7 @@ export function ErrorFallback({ error, onReset }: ErrorFallbackProps): React.Rea
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel="Try Again"
+              testID="try-again-button"
             >
               <Text style={styles.primaryButtonText}>Try Again</Text>
             </TouchableOpacity>

@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-import { SyncStatusBar } from '../SyncStatusBar';
+import { SyncStatusBar } from './SyncStatusBar';
 
 // ---------------------------------------------------------------------------
 // Mock useSyncStatus

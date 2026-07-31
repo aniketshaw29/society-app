@@ -4,6 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Society App',
   slug: 'society-app',
+  owner: 'shaw-dev',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -73,7 +74,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           'Society App uses the camera to take profile photos.',
       },
     ],
-    'expo-sqlite',
     [
       'expo-notifications',
       {
@@ -99,13 +99,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     backendUrl: process.env.EXPO_PUBLIC_BACKEND_URL,
     eas: {
       projectId:
-        process.env.EXPO_PROJECT_ID ?? 'YOUR_EAS_PROJECT_ID',
+        process.env.EXPO_PROJECT_ID ?? 'c0d33caf-ead5-4443-bdd2-c0cf73c8d4da',
     },
   },
   updates: {
     fallbackToCacheTimeout: 0,
     url: `https://u.expo.dev/${
-      process.env.EXPO_PROJECT_ID ?? 'YOUR_EAS_PROJECT_ID'
+      process.env.EXPO_PROJECT_ID ?? 'c0d33caf-ead5-4443-bdd2-c0cf73c8d4da'
     }`,
   },
   runtimeVersion: {

@@ -10,6 +10,7 @@
 
 import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { useRealtimeVisitors } from './useRealtimeVisitors';
+import api from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Mock @/lib/supabase
@@ -105,25 +106,20 @@ const mockVisitors = [
 
 jest.mock('@/lib/api', () => ({
   __esModule: true,
-  default: {
-    get: jest.fn().mockResolvedValue({ data: { visitors: mockVisitors } }),
-  },
+  default: { get: jest.fn() },
 }));
 
 // ---------------------------------------------------------------------------
 // Mock react-native AppState
 // ---------------------------------------------------------------------------
 
-jest.mock('react-native', () => {
-  const rn = jest.requireActual('react-native');
-  return {
-    ...rn,
-    AppState: {
-      currentState: 'active',
-      addEventListener: jest.fn(() => ({ remove: jest.fn() })),
-    },
-  };
-});
+jest.mock('react-native', () => ({
+  AppState: {
+    currentState: 'active',
+    addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  },
+  Platform: { OS: 'ios', select: jest.fn((obj) => obj.ios) },
+}));
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -132,6 +128,10 @@ jest.mock('react-native', () => {
 describe('useRealtimeVisitors', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (api.get as jest.Mock).mockResolvedValue({ data: { visitors: mockVisitors } });
+    // Restore removeChannel after clearAllMocks wipes it
+    const { supabase } = jest.requireMock('@/lib/supabase') as { supabase: Record<string, unknown> };
+    supabase.removeChannel = mockRemoveChannel;
   });
 
   it('creates a channel with the correct society_id filter', async () => {
@@ -153,7 +153,7 @@ describe('useRealtimeVisitors', () => {
 
     await waitFor(() => {
       expect(result.current.visitors).toHaveLength(2);
-      expect(result.current.visitors[0].visitorName).toBe('Alice');
+      expect(result.current.visitors[0]!.visitorName).toBe('Alice');
     });
   });
 
@@ -246,13 +246,14 @@ describe('useRealtimeVisitors', () => {
 
     await waitFor(() => {
       expect(result.current.visitors).toHaveLength(3);
-      expect(result.current.visitors[0].id).toBe('v3');
+      expect(result.current.visitors[0]!.id).toBe('v3');
     });
   });
 
   it('unsubscribes the channel on cleanup', async () => {
     const { unmount } = renderHook(() => useRealtimeVisitors('soc1'));
 
+    // wait for mount to complete
     await waitFor(() => {
       expect(mockRemoveChannel).not.toHaveBeenCalled();
     });

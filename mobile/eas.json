@@ -1,7 +1,6 @@
 {
   "cli": {
-    "version": ">= 7.0.0",
-    "promptToInstallUpdates": true
+    "version": ">= 7.0.0"
   },
   "build": {
     "development": {
@@ -22,8 +21,7 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "buildConfiguration": "Release"
+        "buildType": "apk"
       },
       "ios": {
         "simulator": false,
