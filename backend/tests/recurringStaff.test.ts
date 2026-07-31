@@ -16,6 +16,17 @@ process.env['FIREBASE_PRIVATE_KEY'] =
 process.env['FRONTEND_URL'] = 'http://localhost:8081';
 process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
 
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
+
 // ============================================================
 // Constants
 // ============================================================
@@ -66,7 +77,7 @@ function withFlat(s: StoredStaff) {
 // Supabase mock
 // ============================================================
 
-function buildMockSupabase(userFlatId: string, userRole: string) {
+function buildMockSupabase(userFlatId: string | null, userRole: string) {
   return {
     from: jest.fn((table: string) => {
       if (table === 'recurring_staff') {
@@ -209,10 +220,7 @@ function buildApp(userId: string, role: string, flatId: string | null, societyId
     next();
   };
 
-  jest.mock('../src/middleware/auth', () => ({
-    authenticate: auth,
-    requireRole: (..._roles: string[]) => (_req: Request, _res: Response, next: NextFunction) => next(),
-  }));
+  app.use(auth);
 
   jest.resetModules();
 
@@ -232,10 +240,7 @@ function buildVisitorsApp(userId: string, role: string, societyId: string | null
     next();
   };
 
-  jest.mock('../src/middleware/auth', () => ({
-    authenticate: auth,
-    requireRole: (..._roles: string[]) => (_req: Request, _res: Response, next: NextFunction) => next(),
-  }));
+  app.use(auth);
 
   jest.resetModules();
 
@@ -301,7 +306,7 @@ describe('recurring staff — backend', () => {
     // Create staff allowed only on day 0 (Sunday), test on a non-Sunday
     // We simulate by adjusting the mock to return wrong-day staff
     const wrongDayStaff: StoredStaff = {
-      id: 'staff-wrong-day',
+      id: '00000000-0000-0000-0000-000000000001',
       society_id: SOCIETY_ID,
       flat_id: FLAT_ID,
       resident_id: RESIDENT_USER_ID,
@@ -348,7 +353,7 @@ describe('recurring staff — backend', () => {
 
   it('guard logs staff entry outside time window returns 400 outside_window', async () => {
     const pastWindowStaff: StoredStaff = {
-      id: 'staff-past-window',
+      id: '00000000-0000-0000-0000-000000000002',
       society_id: SOCIETY_ID,
       flat_id: FLAT_ID,
       resident_id: RESIDENT_USER_ID,
@@ -394,7 +399,7 @@ describe('recurring staff — backend', () => {
   it('resident from other flat cannot delete staff record (403)', async () => {
     // Staff belongs to FLAT_ID, but user has OTHER_FLAT_ID
     const staffInOtherFlat: StoredStaff = {
-      id: 'staff-other-flat',
+      id: '00000000-0000-0000-0000-000000000003',
       society_id: SOCIETY_ID,
       flat_id: FLAT_ID, // belongs to FLAT_ID
       resident_id: RESIDENT_USER_ID,
@@ -436,7 +441,7 @@ describe('recurring staff — backend', () => {
 
   it('guard can search staff by phone within society', async () => {
     const phoneStaff: StoredStaff = {
-      id: 'staff-phone-search',
+      id: '00000000-0000-0000-0000-000000000004',
       society_id: SOCIETY_ID,
       flat_id: FLAT_ID,
       resident_id: RESIDENT_USER_ID,
@@ -456,15 +461,18 @@ describe('recurring staff — backend', () => {
       ...mockSupabase,
       from: jest.fn((table: string) => {
         if (table === 'recurring_staff') {
-          return {
+          const resultData = [withFlat(phoneStaff)];
+          const awaitableChain = {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
             ilike: jest.fn().mockReturnThis(),
-            limit: jest.fn(async () => ({
-              data: [withFlat(phoneStaff)],
-              error: null,
-            })),
+            order: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            then: jest.fn((resolve: (v: { data: typeof resultData; error: null }) => void) => {
+              resolve({ data: resultData, error: null });
+            }),
           };
+          return awaitableChain;
         }
         return mockSupabase.from(table);
       }),
@@ -483,7 +491,7 @@ describe('recurring staff — backend', () => {
 
   it('inactive staff entry returns 400 staff_inactive', async () => {
     const inactiveStaff: StoredStaff = {
-      id: 'staff-inactive',
+      id: '00000000-0000-0000-0000-000000000005',
       society_id: SOCIETY_ID,
       flat_id: FLAT_ID,
       resident_id: RESIDENT_USER_ID,

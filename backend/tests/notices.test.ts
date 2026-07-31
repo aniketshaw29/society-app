@@ -17,6 +17,20 @@ process.env['FRONTEND_URL'] = 'http://localhost:8081';
 process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
 process.env['SMS_PROVIDER'] = 'console';
 
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Auth required' } }); return; }
+    next();
+  },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
+
 // ============================================================
 // Fixtures
 // ============================================================
@@ -84,7 +98,7 @@ jest.mock('../src/lib/firebase', () => ({
 // Supabase mock
 // ============================================================
 
-function buildUserProfilesSubquery(societyId: string) {
+function buildUserProfilesSubquery(_societyId: string) {
   return {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
@@ -113,7 +127,7 @@ function buildFcmTokensTable() {
 function buildNoticesTable() {
   const applyFilters = (store: StoredNotice[], filters: Record<string, unknown>): StoredNotice[] =>
     store.filter((r) =>
-      Object.entries(filters).every(([k, v]) => (r as Record<string, unknown>)[k] === v)
+      Object.entries(filters).every(([k, v]) => (r as unknown as Record<string, unknown>)[k] === v)
     );
 
   return {
@@ -146,7 +160,8 @@ function buildNoticesTable() {
       let rangeStart = 0;
       let rangeEnd = 19;
 
-      const chain = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chain: any = {
         eq: jest.fn((col: string, val: unknown) => { filters[col] = val; return chain; }),
         order: jest.fn(() => chain),
         range: jest.fn((s: number, e: number) => { rangeStart = s; rangeEnd = e; return chain; }),
@@ -177,7 +192,7 @@ function buildNoticesTable() {
             select: jest.fn().mockReturnThis(),
             single: jest.fn(async () => {
               const idx = noticesStore.findIndex((r) =>
-                Object.entries(filters).every(([k, v]) => (r as Record<string, unknown>)[k] === v)
+                Object.entries(filters).every(([k, v]) => (r as unknown as Record<string, unknown>)[k] === v)
               );
               if (idx >= 0) Object.assign(noticesStore[idx] as object, updates);
               return { data: idx >= 0 ? { ...noticesStore[idx] } : null, error: null };
@@ -185,7 +200,7 @@ function buildNoticesTable() {
             // For archive (no select/single chained)
             then: jest.fn((resolve: (v: { error: null }) => void) => {
               const idx = noticesStore.findIndex((r) =>
-                Object.entries(filters).every(([k, v]) => (r as Record<string, unknown>)[k] === v)
+                Object.entries(filters).every(([k, v]) => (r as unknown as Record<string, unknown>)[k] === v)
               );
               if (idx >= 0) Object.assign(noticesStore[idx] as object, updates);
               resolve({ error: null });

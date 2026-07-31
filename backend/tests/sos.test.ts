@@ -60,6 +60,22 @@ function nowIso(): string {
 }
 
 // ============================================================
+// Auth middleware mock — bypass real JWT verification
+// ============================================================
+
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Auth required' } }); return; }
+    next();
+  },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Auth required' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Forbidden' } }); return; }
+    next();
+  },
+}));
+
+// ============================================================
 // FCM mock
 // ============================================================
 
@@ -176,7 +192,7 @@ function buildSosAlertsTable() {
     }),
     update: jest.fn((updates: Partial<StoredSosAlert>) => ({
       eq: jest.fn((col: string, val: unknown) => {
-        const idx = sosStore.findIndex((r) => (r as Record<string, unknown>)[col] === val);
+        const idx = sosStore.findIndex((r) => (r as unknown as Record<string, unknown>)[col] === val);
         if (idx >= 0) Object.assign(sosStore[idx] as object, updates);
         return {
           select: jest.fn().mockReturnThis(),
@@ -192,7 +208,9 @@ function buildSosAlertsTable() {
 
 function buildSosSelectChain(outerFilters: Record<string, unknown>) {
   const localFilters: Record<string, unknown> = { ...outerFilters };
-  let _hasCount = false;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _hasCount = false; void _hasCount;
   let _rangeStart = 0;
   let _rangeEnd = 19;
 
@@ -211,7 +229,7 @@ function buildSosSelectChain(outerFilters: Record<string, unknown>) {
     maybeSingle: jest.fn(async () => {
       const result = sosStore.find((r) =>
         Object.entries(localFilters).every(
-          ([k, v]) => (r as Record<string, unknown>)[k] === v
+          ([k, v]) => (r as unknown as Record<string, unknown>)[k] === v
         )
       );
       return { data: result ? { ...result } : null, error: null };
@@ -219,7 +237,7 @@ function buildSosSelectChain(outerFilters: Record<string, unknown>) {
     single: jest.fn(async () => {
       const result = sosStore.find((r) =>
         Object.entries(localFilters).every(
-          ([k, v]) => (r as Record<string, unknown>)[k] === v
+          ([k, v]) => (r as unknown as Record<string, unknown>)[k] === v
         )
       );
       return { data: result ? { ...result } : null, error: null };
@@ -228,7 +246,7 @@ function buildSosSelectChain(outerFilters: Record<string, unknown>) {
       const results = sosStore
         .filter((r) =>
           Object.entries(localFilters).every(
-            ([k, v]) => (r as Record<string, unknown>)[k] === v
+            ([k, v]) => (r as unknown as Record<string, unknown>)[k] === v
           )
         )
         .slice(_rangeStart, _rangeEnd + 1);

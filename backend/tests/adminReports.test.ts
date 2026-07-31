@@ -17,6 +17,17 @@ process.env['FRONTEND_URL'] = 'http://localhost:8081';
 process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
 process.env['SMS_PROVIDER'] = 'console';
 
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
+
 // ============================================================
 // Fixtures
 // ============================================================
@@ -95,10 +106,11 @@ jest.mock('../src/lib/firebase', () => ({
 // Supabase mock
 // ============================================================
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildSelectChain<T extends Record<string, unknown>>(
   storeRef: () => T[],
-  societyKey = 'society_id'
-) {
+  _societyKey = 'society_id'
+): any {
   const filters: Record<string, unknown> = {};
   let rangeStart = 0;
   let rangeEnd = 49;
@@ -106,7 +118,8 @@ function buildSelectChain<T extends Record<string, unknown>>(
   let lteDate: string | undefined;
   let dateField = 'created_at';
 
-  const chain = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chain: any = {
     eq: jest.fn((col: string, val: unknown) => { filters[col] = val; return chain; }),
     order: jest.fn((_col: string, _opts?: unknown) => chain),
     range: jest.fn((s: number, e: number) => { rangeStart = s; rangeEnd = e; return chain; }),
@@ -114,17 +127,17 @@ function buildSelectChain<T extends Record<string, unknown>>(
     lte: jest.fn((col: string, val: string) => { lteDate = val; dateField = col; return chain; }),
     then: jest.fn((resolve: (v: { data: T[]; error: null; count: number }) => void) => {
       let rows = storeRef().filter((r) =>
-        Object.entries(filters).every(([k, v]) => (r as Record<string, unknown>)[k] === v)
+        Object.entries(filters).every(([k, v]) => (r as unknown as Record<string, unknown>)[k] === v)
       );
       if (gteDate) {
         rows = rows.filter((r) => {
-          const val = (r as Record<string, unknown>)[dateField] as string;
+          const val = (r as unknown as Record<string, unknown>)[dateField] as string;
           return val >= gteDate!;
         });
       }
       if (lteDate) {
         rows = rows.filter((r) => {
-          const val = (r as Record<string, unknown>)[dateField] as string;
+          const val = (r as unknown as Record<string, unknown>)[dateField] as string;
           return val <= lteDate!;
         });
       }
@@ -139,13 +152,13 @@ function buildMockSupabase() {
   return {
     from: jest.fn((table: string) => {
       if (table === 'visitor_logs') {
-        return { select: jest.fn(() => buildSelectChain(() => visitorStore as Record<string, unknown>[])) };
+        return { select: jest.fn(() => buildSelectChain(() => visitorStore as unknown as Record<string, unknown>[])) };
       }
       if (table === 'staff_visits') {
-        return { select: jest.fn(() => buildSelectChain(() => staffVisitStore as Record<string, unknown>[], 'society_id')) };
+        return { select: jest.fn(() => buildSelectChain(() => staffVisitStore as unknown as Record<string, unknown>[], 'society_id')) };
       }
       if (table === 'sos_alerts') {
-        return { select: jest.fn(() => buildSelectChain(() => sosStore as Record<string, unknown>[])) };
+        return { select: jest.fn(() => buildSelectChain(() => sosStore as unknown as Record<string, unknown>[])) };
       }
       return {
         select: jest.fn().mockReturnThis(),

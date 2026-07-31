@@ -7,48 +7,44 @@ import {
   enqueueVisitorInsert,
   getPendingCount,
   getAbandonedCount,
-} from '../syncService';
+} from './syncService';
 import type { LocalVisitor } from '@/types';
+import { getDb } from '@/lib/db/localDb';
+
+// Cast for type-safe mock configuration
+const mockGetDb = getDb as jest.MockedFunction<typeof getDb>;
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
 // Mock expo-sqlite via localDb
-const mockDb = {
-  runAsync: jest.fn(),
-  getFirstAsync: jest.fn(),
-  getAllAsync: jest.fn(),
-  execAsync: jest.fn(),
-};
+// NOTE: jest.mock is hoisted before variable declarations, so we cannot
+// reference `mockDb` inside the factory. Instead we expose a plain jest.fn()
+// for getDb and configure its resolved value in beforeEach.
 jest.mock('@/lib/db/localDb', () => ({
-  getDb: jest.fn().mockResolvedValue(mockDb),
+  getDb: jest.fn(),
 }));
 
-// Mock db/visitors helpers
-const mockUpdateLocalVisitor = jest.fn();
-const mockGetLocalVisitorByLocalId = jest.fn();
+// Mock db/visitors helpers — use jest.fn() directly in factory, reference via requireMock
 jest.mock('@/lib/db/visitors', () => ({
-  updateLocalVisitor: (...args: unknown[]) => mockUpdateLocalVisitor(...args),
+  updateLocalVisitor: jest.fn(),
   upsertFromServer: jest.fn(),
-  getLocalVisitorByLocalId: (...args: unknown[]) => mockGetLocalVisitorByLocalId(...args),
+  getLocalVisitorByLocalId: jest.fn(),
 }));
 
-// Mock db/conflicts helper
-const mockLogConflict = jest.fn();
+// Mock db/conflicts helper — use jest.fn() directly in factory, reference via requireMock
 jest.mock('@/lib/db/conflicts', () => ({
-  logConflict: (...args: unknown[]) => mockLogConflict(...args),
+  logConflict: jest.fn(),
 }));
 
-// Mock axios api
-const mockApiPost = jest.fn();
-const mockApiGet = jest.fn();
-const mockApiPatch = jest.fn();
+// Mock axios api — use jest.fn() directly in factory, reference via requireMock
 jest.mock('@/lib/api', () => ({
+  __esModule: true,
   default: {
-    post: (...args: unknown[]) => mockApiPost(...args),
-    get: (...args: unknown[]) => mockApiGet(...args),
-    patch: (...args: unknown[]) => mockApiPatch(...args),
+    post: jest.fn(),
+    get: jest.fn(),
+    patch: jest.fn(),
   },
 }));
 
@@ -103,11 +99,49 @@ const makeInsertQueueRow = (overrides = {}) => ({
 // beforeEach
 // ---------------------------------------------------------------------------
 
+// Shared mockDb reference — recreated per test so mock calls are isolated
+let mockDb: {
+  runAsync: jest.Mock;
+  getFirstAsync: jest.Mock;
+  getAllAsync: jest.Mock;
+  execAsync: jest.Mock;
+};
+
+// Lazily-resolved mock references (avoids hoisting issues)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getMocks = () => {
+  const apiMock = jest.requireMock('@/lib/api').default;
+  const visitorsMock = jest.requireMock('@/lib/db/visitors');
+  const conflictsMock = jest.requireMock('@/lib/db/conflicts');
+  return {
+    mockApiPost: apiMock.post as jest.Mock,
+    mockApiGet: apiMock.get as jest.Mock,
+    mockApiPatch: apiMock.patch as jest.Mock,
+    mockUpdateLocalVisitor: visitorsMock.updateLocalVisitor as jest.Mock,
+    mockGetLocalVisitorByLocalId: visitorsMock.getLocalVisitorByLocalId as jest.Mock,
+    mockLogConflict: conflictsMock.logConflict as jest.Mock,
+  };
+};
+
 beforeEach(() => {
-  jest.clearAllMocks();
+  mockDb = {
+    runAsync: jest.fn(),
+    getFirstAsync: jest.fn(),
+    getAllAsync: jest.fn(),
+    execAsync: jest.fn(),
+  };
+  mockGetDb.mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
   mockDb.getAllAsync.mockResolvedValue([]);
   mockDb.getFirstAsync.mockResolvedValue(null);
   mockDb.runAsync.mockResolvedValue({ lastInsertRowId: 1, changes: 1 });
+  // Reset all mock functions
+  const { mockApiPost, mockApiGet, mockApiPatch, mockUpdateLocalVisitor, mockGetLocalVisitorByLocalId, mockLogConflict } = getMocks();
+  mockApiPost.mockReset();
+  mockApiGet.mockReset();
+  mockApiPatch.mockReset();
+  mockUpdateLocalVisitor.mockReset();
+  mockGetLocalVisitorByLocalId.mockReset();
+  mockLogConflict.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -116,9 +150,10 @@ beforeEach(() => {
 
 describe('processQueue', () => {
   it('calls POST /visitors for a pending INSERT entry', async () => {
+    const { mockApiPost, mockUpdateLocalVisitor } = getMocks();
     mockDb.getAllAsync.mockResolvedValueOnce([makeInsertQueueRow()]);
     mockApiPost.mockResolvedValueOnce({
-      data: { visitor: { id: SERVER_ID, ...baseLocalVisitor } },
+      data: { visitor: { ...baseLocalVisitor, id: SERVER_ID } },
     });
 
     await processQueue();
@@ -134,13 +169,12 @@ describe('processQueue', () => {
   });
 
   it('increments attempts on failure and computes next_attempt', async () => {
+    const { mockApiPost } = getMocks();
     mockDb.getAllAsync.mockResolvedValueOnce([makeInsertQueueRow({ attempts: 0 })]);
     mockApiPost.mockRejectedValueOnce(new Error('Network Error'));
 
     await processQueue();
 
-    // Should NOT call markQueueSuccess
-    // Should call runAsync to update attempts
     const updateCalls = mockDb.runAsync.mock.calls.filter((c: unknown[]) =>
       (c[0] as string).includes('attempts =')
     );
@@ -148,10 +182,11 @@ describe('processQueue', () => {
 
     const [sql, params] = updateCalls[0] as [string, unknown[]];
     expect(sql).toContain('next_attempt');
-    expect(params[0]).toBe(1); // new attempts count
+    expect(params[0]).toBe(1);
   });
 
   it('sets status=abandoned after 3rd failure', async () => {
+    const { mockApiPost } = getMocks();
     mockDb.getAllAsync.mockResolvedValueOnce([makeInsertQueueRow({ attempts: 2 })]);
     mockApiPost.mockRejectedValueOnce(new Error('Network Error'));
 
@@ -164,6 +199,7 @@ describe('processQueue', () => {
   });
 
   it('marks local visitor sync_status=error after abandonment', async () => {
+    const { mockApiPost, mockUpdateLocalVisitor } = getMocks();
     mockDb.getAllAsync.mockResolvedValueOnce([makeInsertQueueRow({ attempts: 2 })]);
     mockApiPost.mockRejectedValueOnce(new Error('Server down'));
 
@@ -176,7 +212,7 @@ describe('processQueue', () => {
   });
 
   it('skips entries whose next_attempt is in the future (filtered by SQL)', async () => {
-    // The SQL filter is applied inside processQueue — if getAllAsync returns empty, nothing runs
+    const { mockApiPost } = getMocks();
     mockDb.getAllAsync.mockResolvedValueOnce([]);
 
     await processQueue();

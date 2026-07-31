@@ -10,22 +10,22 @@ import {
   getLocalVisitorByLocalId,
   getActiveLocalVisitors,
   upsertFromServer,
-} from '../visitors';
+} from './visitors';
 import type { LocalVisitor, VisitorLog } from '@/types';
+import { getDb } from './localDb';
+
+// Cast for type-safe mock configuration
+const mockGetDb = getDb as jest.MockedFunction<typeof getDb>;
 
 // ---------------------------------------------------------------------------
 // Mock getDb
 // ---------------------------------------------------------------------------
 
-const mockDb = {
-  runAsync: jest.fn(),
-  getFirstAsync: jest.fn(),
-  getAllAsync: jest.fn(),
-  execAsync: jest.fn(),
-};
-
-jest.mock('../localDb', () => ({
-  getDb: jest.fn().mockResolvedValue(mockDb),
+// NOTE: jest.mock is hoisted before variable declarations, so we cannot
+// reference `mockDb` inside the factory. Instead we expose a plain jest.fn()
+// and configure its resolved value in beforeEach.
+jest.mock('./localDb', () => ({
+  getDb: jest.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -78,8 +78,23 @@ const serverVisitor: VisitorLog = {
 // Tests
 // ---------------------------------------------------------------------------
 
+// Shared mockDb reference — recreated per test so mock calls are isolated
+let mockDb: {
+  runAsync: jest.Mock;
+  getFirstAsync: jest.Mock;
+  getAllAsync: jest.Mock;
+  execAsync: jest.Mock;
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
+  mockDb = {
+    runAsync: jest.fn(),
+    getFirstAsync: jest.fn(),
+    getAllAsync: jest.fn(),
+    execAsync: jest.fn(),
+  };
+  mockGetDb.mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
 });
 
 describe('insertLocalVisitor', () => {

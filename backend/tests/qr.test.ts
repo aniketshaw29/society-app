@@ -17,6 +17,17 @@ process.env['FRONTEND_URL'] = 'http://localhost:8081';
 process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
 process.env['QR_HMAC_SECRET'] = 'test-qr-hmac-secret-32-chars-long!';
 
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
+
 import { generateQrPayload, verifyQrPayload } from '../src/lib/qrUtils';
 
 // ============================================================
@@ -255,13 +266,7 @@ function buildTestApp() {
     next();
   };
 
-  const requireGuard = (_req: Request, _res: Response, next: NextFunction) => next();
-
-  // Temporarily replace authenticate + requireRole for test isolation
-  jest.mock('../src/middleware/auth', () => ({
-    authenticate: auth,
-    requireRole: () => requireGuard,
-  }));
+  app.use(auth);
 
   // Re-require to pick up mocks
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -342,7 +347,8 @@ describe('POST /pre-approvals/verify-qr', () => {
 
     // Override maybeSingle to return the used pre-approval
     const usedPa = preApprovalStore[0];
-    mockSupabase.from = jest.fn((table: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(mockSupabase as any).from = jest.fn((table: string) => {
       if (table === 'pre_approvals') {
         return {
           select: jest.fn().mockReturnThis(),

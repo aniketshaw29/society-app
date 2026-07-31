@@ -16,8 +16,21 @@ process.env['FIREBASE_CLIENT_EMAIL'] =
 process.env['FIREBASE_PRIVATE_KEY'] =
   '-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC7test\n-----END PRIVATE KEY-----\n';
 process.env['FRONTEND_URL'] = 'http://localhost:8081';
-process.env['API_SECRET_KEY'] =
-  'test-secret-key-minimum-32-characters-long-for-validation';
+process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
+
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Auth required' } }); return; }
+    next();
+  },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
 
 // ============================================================
 // In-memory store
@@ -107,8 +120,10 @@ jest.mock('../src/lib/supabaseAdmin', () => {
 
   // Track calls to figure out which table/operation
   let lastTable = '';
-  let insertData: unknown = null;
-  let updateData: unknown = null;
+  let _insertData: unknown = null;
+  void _insertData;
+  let _updateData: unknown = null;
+  void _updateData;
 
   const supabaseAdmin = {
     from: jest.fn((table: string) => {
@@ -213,7 +228,7 @@ jest.mock('../src/lib/supabaseAdmin', () => {
       });
 
       const insertFn = jest.fn((row: unknown) => {
-        insertData = row;
+        (_insertData) = row;
         return {
           ...buildChain(() => ({ data: row, error: null })),
           select: jest.fn().mockReturnThis(),
@@ -222,7 +237,7 @@ jest.mock('../src/lib/supabaseAdmin', () => {
       });
 
       const updateFn = jest.fn((patch: unknown) => {
-        updateData = patch;
+        (_updateData) = patch;
         return {
           ...buildChain(() => ({ data: null, error: null })),
           eq: jest.fn().mockReturnThis(),
@@ -326,6 +341,14 @@ function buildApp() {
   });
 
   app.use('/flats', flatsRouter);
+
+  // Error handler — serializes AppError to JSON
+  app.use((err: Error & { statusCode?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.statusCode ?? 500;
+    const code = err.code ?? 'INTERNAL';
+    res.status(status).json({ error: { code, message: err.message } });
+  });
+
   return app;
 }
 

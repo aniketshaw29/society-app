@@ -5,7 +5,7 @@
 import {
   resolveStatusConflict,
   resolveExitTime,
-} from '../conflictResolver';
+} from './conflictResolver';
 import type { LocalVisitor, VisitorLog } from '@/types';
 
 // ---------------------------------------------------------------------------

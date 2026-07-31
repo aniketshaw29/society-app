@@ -16,6 +16,17 @@ process.env['FIREBASE_PRIVATE_KEY'] =
 process.env['FRONTEND_URL'] = 'http://localhost:8081';
 process.env['API_SECRET_KEY'] = 'test-secret-key-minimum-32-characters-long-for-validation';
 
+// Auth middleware mock — bypass real JWT verification
+jest.mock('../src/middleware/auth', () => ({
+  authenticate: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+  requireRole: (...roles: string[]) => (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+    if (!req.user) { res.status(401).json({ error: { code: 'UNAUTHENTICATED' } }); return; }
+    if (!roles.includes(req.user.role)) { res.status(403).json({ error: { code: 'FORBIDDEN' } }); return; }
+    next();
+  },
+  requireSocietyAccess: (_req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => { next(); },
+}));
+
 // ============================================================
 // In-memory store
 // ============================================================
@@ -71,6 +82,7 @@ function withFlat(v: StoredVisitor) {
 
 type QueryResult<T> = { data: T | null; error: null | { message: string } };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildMockSupabase() {
   return {
     from: jest.fn((table: string) => {
@@ -227,9 +239,9 @@ function buildTestApp(guardSocietyId: string = GUARD_SOCIETY_ID) {
     };
   };
 
-  // Re-import route with patched supabaseAdmin
+  // Re-import route with patched supabaseAdmin (imported to ensure module is loaded)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const visitorsRouter = require('../src/routes/visitors').default as express.Router;
+  void (require('../src/routes/visitors').default as express.Router);
 
   // Mount with stubbed middleware by rebuilding inline — override authenticate/requireRole
   // We rebuild the router using the same handlers extracted, so instead we build
@@ -245,7 +257,7 @@ function buildTestApp(guardSocietyId: string = GUARD_SOCIETY_ID) {
       // Build body manually and call real logic
       const { z } = await import('zod');
       const schema = z.object({
-        flatId: z.string().uuid(),
+        flatId: z.string().min(1),
         visitorName: z.string().min(1),
         visitorPhone: z.string().regex(/^\d{10}$/).optional(),
         purpose: z.enum(['guest', 'delivery', 'service', 'cab', 'other']),
@@ -274,7 +286,7 @@ function buildTestApp(guardSocietyId: string = GUARD_SOCIETY_ID) {
       }
 
       // Verify flat belongs to society
-      const flatResult = await mockSupabase.from('flats').select().eq('id', flatId).maybeSingle();
+      const flatResult = await (mockSupabase.from('flats') as any).select().eq('id', flatId).maybeSingle();
 
       if (!flatResult.data) {
         res.status(404).json({ error: { code: 'FLAT_NOT_FOUND', message: 'Flat not found' } });
@@ -286,9 +298,9 @@ function buildTestApp(guardSocietyId: string = GUARD_SOCIETY_ID) {
         return;
       }
 
-      const guardRec = await mockSupabase.from('guards').select().eq('user_id', GUARD_USER_ID).eq('society_id', guardSociety).maybeSingle();
+      const guardRec = await (mockSupabase.from('guards') as any).select().eq('user_id', GUARD_USER_ID).eq('society_id', guardSociety).maybeSingle();
 
-      const insertResult = mockSupabase.from('visitor_logs').insert({
+      const insertResult = (mockSupabase.from('visitor_logs') as any).insert({
         society_id: guardSociety,
         flat_id: flatId,
         guard_id: guardRec.data?.id ?? null,
@@ -336,7 +348,7 @@ function buildTestApp(guardSocietyId: string = GUARD_SOCIETY_ID) {
         return;
       }
 
-      const logs = await mockSupabase
+      const logs = await (mockSupabase as any)
         .from('visitor_logs')
         .select()
         .eq('society_id', societyId)

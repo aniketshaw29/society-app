@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin';
 import { authenticate, requireRole } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { generateQrPayload, verifyQrPayload } from '../lib/qrUtils';
+import { verifyOtp, generateOtp, hashOtp } from '../lib/otpUtils';
 import { notifyFlatResidents } from '../services/notificationService';
 
 const router = Router();
@@ -93,12 +94,24 @@ const createPreApproval: RequestHandler = async (req, res, next) => {
 
     const { guestName, guestPhone, validFrom, validUntil, note } = parsed.data;
 
+    // validUntil must be in the future
+    if (new Date(validUntil) <= new Date()) {
+      res.status(422).json({
+        error: { code: 'VALIDATION_ERROR', message: 'validUntil must be in the future' },
+      });
+      return;
+    }
+
     if (new Date(validUntil) <= new Date(validFrom)) {
       res.status(422).json({
         error: { code: 'VALIDATION_ERROR', message: 'validUntil must be after validFrom' },
       });
       return;
     }
+
+    // Generate OTP and hash it
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
 
     const { data: newApproval, error: insertError } = await supabaseAdmin
       .from('pre_approvals')
@@ -111,6 +124,8 @@ const createPreApproval: RequestHandler = async (req, res, next) => {
         valid_from: validFrom,
         valid_until: validUntil,
         status: 'active',
+        otp_hash: otpHash,
+        otp_attempts: 0,
         note: note ?? null,
       })
       .select('*')
@@ -478,6 +493,157 @@ const verifyQr: RequestHandler = async (req, res, next) => {
 
 // POST /pre-approvals/verify-qr — must come before /:id routes
 router.post('/verify-qr', requireRole('guard'), verifyQr);
+
+// POST /pre-approvals/verify — OTP-based entry (guard scans OTP from resident)
+const verifyOtpSchema = z.object({
+  guestPhone: z.string().min(1),
+  otp: z.string().length(6),
+  societyId: z.string().min(1),
+});
+
+const MAX_OTP_ATTEMPTS = 3;
+
+const verifyPreApprovalOtp: RequestHandler = async (req, res, next) => {
+  try {
+    const user = req.user!;
+    const parsed = verifyOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request body' } });
+      return;
+    }
+
+    const { guestPhone, otp, societyId } = parsed.data;
+
+    // Guard can only verify for their own society
+    if (user.society_id && user.society_id !== societyId) {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Society mismatch' } });
+      return;
+    }
+
+    // Find the most recent active/locked pre-approval for this phone + society
+    const { data: existing, error: findError } = await supabaseAdmin
+      .from('pre_approvals')
+      .select('*')
+      .eq('guest_phone', guestPhone)
+      .eq('society_id', societyId)
+      .order('created_at', { ascending: false })
+      .maybeSingle() as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+    if (findError) throw new AppError(500, 'FETCH_FAILED', findError.message);
+
+    if (!existing) {
+      res.status(404).json({ error: { code: 'not_found', message: 'No pre-approval found for this phone' } });
+      return;
+    }
+
+    const status = existing['status'] as string;
+    const validUntil = existing['valid_until'] as string;
+    const otpHash = existing['otp_hash'] as string;
+    const otpAttempts = (existing['otp_attempts'] as number) ?? 0;
+    const paId = existing['id'] as string;
+
+    // Already used
+    if (status === 'used') {
+      res.status(409).json({ error: { code: 'already_used', message: 'This pre-approval has already been used' } });
+      return;
+    }
+
+    // Expired (check valid_until)
+    if (new Date(validUntil) < new Date()) {
+      res.status(400).json({ error: { code: 'expired', message: 'Pre-approval has expired' } });
+      return;
+    }
+
+    // Locked due to too many wrong attempts
+    if (status === 'locked') {
+      res.status(401).json({ error: { code: 'locked', message: 'Pre-approval is locked', attemptsRemaining: 0 } });
+      return;
+    }
+
+    // Verify OTP
+    const otpCorrect = await verifyOtp(otp, otpHash);
+    if (!otpCorrect) {
+      const newAttempts = otpAttempts + 1;
+      const nowLocked = newAttempts >= MAX_OTP_ATTEMPTS;
+
+      await supabaseAdmin
+        .from('pre_approvals')
+        .update({
+          otp_attempts: newAttempts,
+          ...(nowLocked ? { status: 'locked' } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', paId);
+
+      if (nowLocked) {
+        res.status(401).json({ error: { code: 'locked', message: 'Pre-approval locked after too many wrong attempts', attemptsRemaining: 0 } });
+        return;
+      }
+
+      const remaining = MAX_OTP_ATTEMPTS - newAttempts;
+      res.status(401).json({ error: { code: 'wrong_otp', message: 'Incorrect OTP', attemptsRemaining: remaining } });
+      return;
+    }
+
+    // OTP correct — mark as used
+    await supabaseAdmin
+      .from('pre_approvals')
+      .update({ status: 'used', used_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', paId);
+
+    // Create visitor log
+    const { data: guardRec } = await supabaseAdmin
+      .from('guards')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('society_id', societyId)
+      .maybeSingle() as { data: { id: string } | null; error: unknown };
+
+    const { data: newLog, error: logError } = await supabaseAdmin
+      .from('visitor_logs')
+      .insert({
+        society_id: societyId,
+        flat_id: existing['flat_id'],
+        guard_id: guardRec?.id ?? null,
+        visitor_name: existing['guest_name'],
+        visitor_phone: existing['guest_phone'],
+        purpose: existing['purpose'] ?? 'guest',
+        entry_method: 'otp',
+        status: 'approved',
+        approved_by: user.id,
+        approved_at: new Date().toISOString(),
+        entry_time: new Date().toISOString(),
+      })
+      .select('id, society_id, flat_id, visitor_name, visitor_phone, purpose, entry_method, status, entry_time, created_at, updated_at, flats(flat_number, buildings(name))')
+      .single() as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+    if (logError || !newLog) throw new AppError(500, 'LOG_FAILED', logError?.message ?? 'Failed to create visitor log');
+
+    res.status(200).json({
+      visitor: {
+        id: newLog['id'],
+        societyId: newLog['society_id'],
+        flatId: newLog['flat_id'],
+        visitorName: newLog['visitor_name'],
+        status: newLog['status'],
+        entryMethod: newLog['entry_method'],
+        purpose: newLog['purpose'],
+        createdAt: newLog['created_at'],
+        updatedAt: newLog['updated_at'],
+      },
+      preApproval: {
+        id: existing['id'],
+        guestName: existing['guest_name'],
+        guestPhone: existing['guest_phone'],
+        status: 'used',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.post('/verify', requireRole('guard'), verifyPreApprovalOtp);
 
 // Resident routes
 router.post('/', requireRole('flat_owner', 'tenant'), createPreApproval);
